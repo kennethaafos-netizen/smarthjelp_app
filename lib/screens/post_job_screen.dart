@@ -19,7 +19,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   String? category;
   String? location;
-
   XFile? image;
 
   @override
@@ -33,19 +32,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
           _field(_title, "Tittel"),
           _field(_desc, "Beskrivelse"),
           _field(_price, "Pris", number: true),
-
-          _dropdown(kCategories, category, "Kategori",
-              (v) => setState(() => category = v)),
-
-          _dropdown(kLocations, location, "Sted",
-              (v) => setState(() => location = v)),
-
+          _dropdown(
+            kCategories,
+            category,
+            "Kategori",
+            (v) => setState(() => category = v),
+          ),
+          _dropdown(
+            kLocations,
+            location,
+            "Sted",
+            (v) => setState(() => location = v),
+          ),
           const SizedBox(height: 20),
-
           ElevatedButton(
             onPressed: _submit,
             child: const Text("Publiser"),
-          )
+          ),
         ],
       ),
     );
@@ -65,19 +68,17 @@ class _PostJobScreenState extends State<PostJobScreen> {
         ),
         child: image == null
             ? const Center(child: Text("Velg bilde"))
-            : Image.network(image!.path, fit: BoxFit.cover),
+            : const Center(child: Text("Bilde valgt")),
       ),
     );
   }
 
-  Widget _field(TextEditingController c, String hint,
-      {bool number = false}) {
+  Widget _field(TextEditingController c, String hint, {bool number = false}) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: TextField(
         controller: c,
-        keyboardType:
-            number ? TextInputType.number : TextInputType.text,
+        keyboardType: number ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           hintText: hint,
           border: OutlineInputBorder(
@@ -96,10 +97,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
   ) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: DropdownButtonFormField(
+      child: DropdownButtonFormField<String>(
         initialValue: value,
         items: list
-            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+            .map((e) => DropdownMenuItem<String>(value: e, child: Text(e)))
             .toList(),
         onChanged: onChanged,
         decoration: InputDecoration(

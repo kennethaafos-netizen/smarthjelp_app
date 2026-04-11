@@ -1,11 +1,10 @@
-// FULL FILE – chat_screen.dart
-
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../models/chat_message.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
-import 'job_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final Job job;
@@ -17,148 +16,206 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _controller = TextEditingController();
+  final TextEditingController _ctrl = TextEditingController();
+  ChatMessage? _replyTo;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-
-    final currentJob =
-        appState.jobs.firstWhere((j) => j.id == widget.job.id);
-
-    final messages = appState.getMessagesForJob(currentJob.id);
+    final messages = appState.getMessagesForJob(widget.job.id);
+    final currentUser = appState.currentUser;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Chat"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.work_outline),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => JobDetailScreen(job: currentJob),
-                ),
-              );
-            },
-          )
-        ],
+        title: Text(widget.job.title),
       ),
       body: Column(
         children: [
           Expanded(
-            child: Column(
-              children: [
-                if (messages.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      "💬 Avtal pris, tidspunkt og detaljer her",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: messages.length,
-                    itemBuilder: (_, i) {
-                      final m = messages[i];
-                      final isMe = m.senderId == appState.currentUser.id;
+            child: ListView.builder(
+              reverse: true,
+              padding: const EdgeInsets.all(12),
+              itemCount: messages.length,
+              itemBuilder: (_, i) {
+                final msg = messages[messages.length - 1 - i];
+                final isMe = msg.senderId == currentUser.id;
+                final sender =
+                    appState.getUserById(msg.senderId)?.firstName ?? "Bruker";
 
-                      return Align(
-                        alignment: isMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: isMe ? Colors.blue : Colors.grey[300],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            m.text,
-                            style: TextStyle(
-                              color: isMe ? Colors.white : Colors.black,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                return GestureDetector(
+                  onLongPress: () {
+                    setState(() => _replyTo = msg);
+                  },
+                  onTap: () {
+                    appState.toggleReaction(msg.id, "❤️");
+                  },
+                  child: _buildBubble(msg, isMe, sender),
+                );
+              },
             ),
           ),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(
-                    hintText: "Skriv melding...",
-                    contentPadding: EdgeInsets.all(12),
+          if (_replyTo != null)
+            Container(
+              padding: const EdgeInsets.all(10),
+              color: Colors.grey.shade200,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Svarer på: ${_replyTo!.text}",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => _replyTo = null),
+                  )
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: () {
-                  appState.sendMessage(
-                    currentJob.id,
-                    _controller.text,
-                  );
-                  _controller.clear();
-                },
-              ),
-            ],
-          ),
-
-          _actionBar(appState, currentJob),
+            ),
+          _inputBar(),
         ],
       ),
     );
   }
 
-  Widget _actionBar(AppState appState, Job job) {
-    if (job.status == JobStatus.open) {
-      return _btn("Ta oppdrag", Colors.blue, () {
-        appState.reserveJob(job.id);
-      });
-    }
+  Widget _buildBubble(ChatMessage msg, bool isMe, String name) {
+    final time = DateFormat.Hm().format(msg.createdAt);
+    final isSystem = msg.senderId == 'system';
 
-    if (job.status == JobStatus.reserved) {
-      return Row(
-        children: [
-          Expanded(
-            child: _btn("Avbryt", Colors.grey, () {
-              appState.releaseJob(job.id);
-            }),
+    if (isSystem) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(18),
           ),
-          Expanded(
-            child: _btn("Start jobb", Colors.green, () {
-              appState.confirmJob(job.id);
-            }),
+          child: Text(
+            msg.text,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.orange,
+            ),
           ),
-        ],
+        ),
       );
     }
 
-    return const SizedBox();
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              "$name • $time",
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.all(12),
+            constraints: const BoxConstraints(maxWidth: 260),
+            decoration: BoxDecoration(
+              color: isMe ? const Color(0xFF2356E8) : Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 6,
+                )
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (msg.replyToText != null)
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    margin: const EdgeInsets.only(bottom: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      msg.replyToText!,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                if (msg.imageUrl != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      msg.imageUrl!,
+                      height: 140,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                if (msg.text.isNotEmpty)
+                  Text(
+                    msg.text,
+                    style: TextStyle(
+                      color: isMe ? Colors.white : Colors.black,
+                    ),
+                  ),
+                if (msg.reaction != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(msg.reaction!),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _btn(String text, Color color, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          minimumSize: const Size.fromHeight(50),
+  Widget _inputBar() {
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                decoration: InputDecoration(
+                  hintText: "Skriv melding...",
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.send),
+              onPressed: () {
+                context.read<AppState>().sendMessage(
+                      widget.job.id,
+                      _ctrl.text,
+                      replyTo: _replyTo,
+                    );
+                _ctrl.clear();
+                setState(() => _replyTo = null);
+              },
+            )
+          ],
         ),
-        onPressed: onTap,
-        child: Text(text),
       ),
     );
   }

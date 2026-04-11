@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/chat_list_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/jobs_screen.dart';
 import '../screens/post_job_screen.dart';
-import '../screens/chat_list_screen.dart';
 import '../screens/profile_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -15,25 +14,16 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int currentIndex = 0;
+  int _index = 0;
 
-  void _onNavigate(int index) {
-    setState(() => currentIndex = index);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: _buildScreen(),
-      bottomNavigationBar: _buildBottomBar(),
-    );
+  void _onNavigate(int i) {
+    setState(() => _index = i);
   }
 
   Widget _buildScreen() {
-    switch (currentIndex) {
+    switch (_index) {
       case 0:
-        return HomeScreen(onNavigate: _onNavigate); // ✅ riktig
+        return HomeScreen(onNavigate: _onNavigate);
       case 1:
         return const JobsScreen();
       case 2:
@@ -47,80 +37,38 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  Widget _buildBottomBar() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _buildScreen(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: _onNavigate,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Hjem',
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _navItem(Icons.home, "Hjem", 0),
-          _navItem(Icons.list_alt, "Oppdrag", 1),
-
-          GestureDetector(
-            onTap: () => _onNavigate(2),
-            child: Container(
-              height: 72,
-              width: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF4A8BFF),
-                    Color(0xFF2ED3C6),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.add, color: Colors.white),
-            ),
+          NavigationDestination(
+            icon: Icon(Icons.work_outline),
+            selectedIcon: Icon(Icons.work),
+            label: 'Oppdrag',
           ),
-
-          _navItem(Icons.chat_bubble_outline, "Meldinger", 3),
-          _navItem(Icons.person_outline, "Profil", 4),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(IconData icon, String label, int index) {
-    final active = currentIndex == index;
-
-    return GestureDetector(
-      onTap: () => _onNavigate(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 22,
-            color: active ? const Color(0xFF4A8BFF) : Colors.grey,
+          NavigationDestination(
+            icon: Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle),
+            label: 'Legg ut',
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              color: active ? const Color(0xFF4A8BFF) : Colors.grey,
-              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-            ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Chat',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profil',
           ),
         ],
       ),

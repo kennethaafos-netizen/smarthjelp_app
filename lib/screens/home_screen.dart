@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -20,60 +17,31 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  GoogleMapController? _mapController;
-
   bool _showMap = true;
-  double _zoom = 11.0;
-  int _lastRenderedZoomBucket = -1;
-
-  Set<Marker> _markers = <Marker>{};
-  Set<Circle> _heatmap = <Circle>{};
-  Set<Marker> _nextMarkers = <Marker>{};
-
   Job? _selectedJob;
-
-  String _renderSignature = '';
-  bool _isAnimating = false;
+  Set<Marker> _markers = {};
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    appState.checkExpiredReservations();
-
     final jobs = appState.smartRankedJobs;
 
-    _scheduleMapRefresh(jobs);
+    _buildMarkers(jobs);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FC),
+      backgroundColor: const Color(0xFFF4F7FC),
       body: SafeArea(
         child: Column(
           children: [
-            _topBar(),
+            _header(context, jobs),
             const SizedBox(height: 10),
             _toggle(),
+            const SizedBox(height: 10),
             Expanded(
-              child: _showMap
-                  ? _mapView(jobs)
-                  : ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        _hotJobs(jobs),
-                        const SizedBox(height: 16),
-                        _newJobs(jobs),
-                        const SizedBox(height: 16),
-                        ...jobs.map(
-                          (job) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: JobCard(
-                              job: job,
-                              distanceText: job.locationName,
-                              onTap: () => _openJob(job),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: _showMap ? _mapView(jobs) : _listView(jobs),
+              ),
             ),
           ],
         ),
@@ -81,50 +49,98 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ================= TOP =================
-
-  Widget _topBar() {
+  Widget _header(BuildContext context, List<Job> jobs) {
     final user = context.read<AppState>().currentUser;
-    final jobs = context.read<AppState>().smartRankedJobs;
+    final nearbyCount = jobs.length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "Hei, ${user.firstName} 👋",
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Hei ${user.firstName} 👋",
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => widget.onNavigate?.call(4),
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: const Icon(Icons.person_outline),
+                ),
+              )
+            ],
           ),
-          const SizedBox(height: 6),
-          const Text(
-            "Oppdrag nær deg",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Text(
-            "⚡ ${jobs.length} tilgjengelige nå",
-            style: const TextStyle(color: Colors.grey),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => setState(() => _showMap = false),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF2356E8), Color(0xFF18B7A6)],
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.local_fire_department, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "$nearbyCount oppdrag i nærheten av deg",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: Colors.white),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ================= TOGGLE =================
-
   Widget _toggle() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _toggleBtn("Kart", _showMap, () {
-            setState(() => _showMap = true);
-          }),
-          const SizedBox(width: 8),
-          _toggleBtn("Liste", !_showMap, () {
-            setState(() => _showMap = false);
-          }),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            _toggleBtn("Kart", _showMap, () {
+              setState(() => _showMap = true);
+            }),
+            _toggleBtn("Liste", !_showMap, () {
+              setState(() => _showMap = false);
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -134,17 +150,17 @@ class _HomeScreenState extends State<HomeScreen> {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: active ? Colors.blue : Colors.white,
+            color: active ? const Color(0xFF2356E8) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Center(
             child: Text(
               text,
               style: TextStyle(
-                color: active ? Colors.white : Colors.black,
-                fontWeight: FontWeight.bold,
+                color: active ? Colors.white : Colors.grey,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -153,86 +169,153 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ================= LIST SECTIONS =================
-
-  Widget _hotJobs(List<Job> jobs) {
-    final hot = [...jobs]
-  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final top = hot.take(5).toList();
-
-    if (top.isEmpty) return const SizedBox();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _mapView(List<Job> jobs) {
+    return Stack(
+      key: const ValueKey('map_view'),
       children: [
-        const Text("🔥 Populære oppdrag",
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: GoogleMap(
+              initialCameraPosition: const CameraPosition(
+                target: LatLng(59.14, 9.65),
+                zoom: 11,
+              ),
+              markers: _markers,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              onTap: (_) => setState(() => _selectedJob = null),
+            ),
+          ),
+        ),
+        if (_selectedJob != null)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 20,
+            child: JobCard(
+              job: _selectedJob!,
+              distanceText: _selectedJob!.locationName,
+              onTap: () => _openJob(_selectedJob!),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _buildMarkers(List<Job> jobs) {
+    _markers = jobs.map((job) {
+      return Marker(
+        markerId: MarkerId(job.id),
+        position: LatLng(job.lat, job.lng),
+        infoWindow: InfoWindow(
+          title: "${job.title} • ${job.price} kr",
+          snippet: "${job.category} • ${job.locationName}",
+        ),
+        onTap: () => setState(() => _selectedJob = job),
+      );
+    }).toSet();
+  }
+
+  Widget _listView(List<Job> jobs) {
+    final trending = [...jobs]
+      ..sort((a, b) => b.viewCount.compareTo(a.viewCount));
+
+    return ListView(
+      key: const ValueKey('list_view'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          "🔥 Trending",
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 140,
-          child: ListView.builder(
+          height: 170, // 🔥 økt for knapp
+          child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: top.length,
+            itemCount: trending.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
-              final job = top[i];
-              return SizedBox(
-                width: 220,
-                child: JobCard(
-                  job: job,
-                  distanceText: job.locationName,
-                  onTap: () => _openJob(job),
+              final job = trending[i];
+
+              return GestureDetector(
+                onTap: () => _openJob(job),
+                child: Container(
+                  width: 240,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.title,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        job.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("${job.price} kr"),
+
+                          ElevatedButton(
+                            onPressed: () {
+                              context.read<AppState>().reserveJob(job.id);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 10),
+                              minimumSize: const Size(0, 40),
+                              tapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              "Ta jobb",
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _newJobs(List<Job> jobs) {
-    final fresh = [...jobs]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final top = fresh.take(5).toList();
-
-    if (top.isEmpty) return const SizedBox();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("⚡ Nye nå",
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 20),
+        const Text(
+          "📍 Alle oppdrag",
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
         const SizedBox(height: 10),
-        ...top.map(
-          (job) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: JobCard(
-              job: job,
-              distanceText: job.locationName,
-              onTap: () => _openJob(job),
-            ),
+        ...jobs.map(
+          (job) => JobCard(
+            job: job,
+            distanceText: job.locationName,
+            onTap: () => _openJob(job),
           ),
         ),
       ],
     );
   }
-
-  // ================= MAP =================
-
-  Widget _mapView(List<Job> jobs) {
-    return GoogleMap(
-      initialCameraPosition: const CameraPosition(
-        target: LatLng(59.14, 9.65),
-        zoom: 11,
-      ),
-      markers: _markers,
-      circles: _heatmap,
-    );
-  }
-
-  void _scheduleMapRefresh(List<Job> jobs) {}
-
-  // ================= NAV =================
 
   void _openJob(Job job) {
     context.read<AppState>().incrementView(job.id);

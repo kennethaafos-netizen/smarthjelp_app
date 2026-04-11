@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/app_state.dart';
 import '../models/job.dart';
-import 'job_detail_screen.dart';
+import '../providers/app_state.dart';
 import 'account_screen.dart';
+import 'job_detail_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -23,85 +23,106 @@ class ProfileScreen extends StatelessWidget {
         activeTaken.where((j) => j.status == JobStatus.reserved).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FC),
+      backgroundColor: const Color(0xFFF4F7FC),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           child: Column(
             children: [
-              _header(user),
-
-              const SizedBox(height: 20),
-
-              // ================= PUSH TOGGLE =================
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+              _header(context, user),
+              const SizedBox(height: 16),
+              _earningsCard(
+                earned: appState.moneyEarned,
+                spent: appState.moneySpent,
+                completed: completedTaken.length,
+              ),
+              const SizedBox(height: 16),
+              _switchCard(
+                value: user.pushNotificationsEnabled,
+                onChanged: (v) => appState.setPushNotifications(v),
+              ),
+              const SizedBox(height: 16),
+              _section(
+                title: "Live status",
+                child: Column(
+                  children: [
+                    _statusRow(
+                      context,
+                      label: "Reserverte oppdrag",
+                      value: reservedJobs,
+                      jobs: activeTaken
+                          .where((j) => j.status == JobStatus.reserved)
+                          .toList(),
+                    ),
+                    _statusRow(
+                      context,
+                      label: "Oppdrag jeg tar",
+                      value: activeTaken.length,
+                      jobs: activeTaken,
+                    ),
+                    _statusRow(
+                      context,
+                      label: "Fullført av meg",
+                      value: completedTaken.length,
+                      jobs: completedTaken,
+                    ),
+                    _statusRow(
+                      context,
+                      label: "Mine aktive oppdrag",
+                      value: activePosted.length,
+                      jobs: activePosted,
+                    ),
+                    _statusRow(
+                      context,
+                      label: "Mine fullførte oppdrag",
+                      value: completedPosted.length,
+                      jobs: completedPosted,
+                    ),
+                  ],
                 ),
-                child: SwitchListTile(
-                  value: user.pushNotificationsEnabled,
-                  title: const Text("Få oppdrag (push varsler)"),
-                  subtitle: const Text("Slå av/på varsler"),
-                  onChanged: (v) {
-                    appState.setPushNotifications(v);
+              ),
+              const SizedBox(height: 16),
+              _section(
+                title: "Profil",
+                child: Column(
+                  children: [
+                    _infoRow("Navn", user.firstName),
+                    _infoRow("E-post", user.email.isEmpty ? "Ikke satt" : user.email),
+                    _infoRow("Telefon", user.phone.isEmpty ? "Ikke satt" : user.phone),
+                    _infoRow("Område", user.preferredArea),
+                    _infoRow(
+                      "Vil ta oppdrag",
+                      user.wantsToWork ? "Ja" : "Nei",
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AccountScreen(),
+                      ),
+                    );
                   },
+                  icon: const Icon(Icons.settings_outlined),
+                  label: const Text("Rediger konto"),
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              // ================= STATS =================
-
-              Row(
-                children: [
-                  _statBox(
-                    "Utført",
-                    completedTaken.length.toString(),
-                  ),
-                  _statBox(
-                    "Tjent",
-                    "${appState.moneyEarned.toStringAsFixed(0)} kr",
-                  ),
-                  _statBox(
-                    "Brukt",
-                    "${appState.moneySpent.toStringAsFixed(0)} kr",
-                  ),
-                ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    context.read<AppState>().switchUser();
+                  },
+                  child: const Text("Bytt bruker (test)"),
+                ),
               ),
-
-              const SizedBox(height: 20),
-
-              // ================= LIVE STATUS =================
-
-              _statusCard(
-                context,
-                activeTaken: activeTaken,
-                completedTaken: completedTaken,
-                activePosted: activePosted,
-                completedPosted: completedPosted,
-                reserved: reservedJobs,
-              ),
-
-              const SizedBox(height: 20),
-
-              // ================= INFO =================
-
-              _infoCard(
-                title: "Oppdrag",
-                items: [
-                  "Aktive oppdrag: ${activeTaken.length}",
-                  "Fullførte oppdrag: ${completedTaken.length}",
-                  "Mine aktive jobber: ${activePosted.length}",
-                  "Mine fullførte jobber: ${completedPosted.length}",
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              _settingsButton(context),
             ],
           ),
         ),
@@ -109,230 +130,256 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ================= HEADER =================
-
-  Widget _header(user) {
-    return Column(
-      children: [
-        const CircleAvatar(
-          radius: 42,
-          child: Icon(Icons.person, size: 40),
+  Widget _header(BuildContext context, dynamic user) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2356E8), Color(0xFF18B7A6)],
         ),
-        const SizedBox(height: 10),
-
-        // 🔥 NAVN
-        Text(
-          user.firstName,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2356E8).withOpacity(0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
-        ),
-
-        // 🔥 NY STATUS (HER SKAL DEN VÆRE)
-        Text(
-          user.wantsToWork
-              ? "🟢 Klar for oppdrag"
-              : "🔴 Søker hjelp",
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person, color: Colors.white, size: 36),
           ),
-        ),
-
-        // ⭐ RATING
-        Text(
-          "⭐ ${user.rating.toStringAsFixed(1)} (${user.ratingCount})",
-          style: const TextStyle(color: Colors.grey),
-        ),
-      ],
-    );
-  }
-
-  // ================= STAT BOX =================
-
-  Widget _statBox(String title, String value) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.firstName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  user.wantsToWork ? "Klar for oppdrag" : "Søker hjelp",
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.92),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded,
+                        color: Colors.orange, size: 18),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${user.rating.toStringAsFixed(1)} (${user.ratingCount})",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // ================= LIVE STATUS =================
-
-  Widget _statusCard(
-    BuildContext context, {
-    required List<Job> activeTaken,
-    required List<Job> completedTaken,
-    required List<Job> activePosted,
-    required List<Job> completedPosted,
-    required int reserved,
+  Widget _earningsCard({
+    required double earned,
+    required double spent,
+    required int completed,
   }) {
+    return _section(
+      title: "Oversikt",
+      child: Row(
+        children: [
+          Expanded(child: _miniStat("Tjent", "${earned.toStringAsFixed(0)} kr")),
+          const SizedBox(width: 10),
+          Expanded(child: _miniStat("Brukt", "${spent.toStringAsFixed(0)} kr")),
+          const SizedBox(width: 10),
+          Expanded(child: _miniStat("Fullført", "$completed")),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF7F9FD),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Live status",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
+          Text(
+            value,
+            style: const TextStyle(
               fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF172033),
             ),
           ),
-          const SizedBox(height: 10),
-
-          _statusRow(
-            context,
-            icon: Icons.timer,
-            color: Colors.orange,
-            text: "Reserverte oppdrag",
-            jobs: activeTaken
-                .where((j) => j.status == JobStatus.reserved)
-                .toList(),
-          ),
-
-          _statusRow(
-            context,
-            icon: Icons.work,
-            color: Colors.blue,
-            text: "Aktive oppdrag",
-            jobs: activeTaken,
-          ),
-
-          _statusRow(
-            context,
-            icon: Icons.upload,
-            color: Colors.green,
-            text: "Mine aktive jobber",
-            jobs: activePosted,
-          ),
-
-          _statusRow(
-            context,
-            icon: Icons.history,
-            color: Colors.grey,
-            text: "Historikk",
-            jobs: completedTaken,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF6E7A90),
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _switchCard({
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return _section(
+      title: "Varsler",
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: value,
+        title: const Text(
+          "Push-varsler",
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text("Få beskjed når nye oppdrag dukker opp"),
+        onChanged: onChanged,
       ),
     );
   }
 
   Widget _statusRow(
     BuildContext context, {
-    required IconData icon,
-    required Color color,
-    required String text,
+    required String label,
+    required int value,
     required List<Job> jobs,
   }) {
-    return GestureDetector(
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => _JobListScreen(
-              title: text,
-              jobs: jobs,
-            ),
+            builder: (_) => _JobListScreen(title: label, jobs: jobs),
           ),
         );
       },
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text)),
-            Text(
-              jobs.length.toString(),
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF172033),
+                ),
+              ),
             ),
-            const Icon(Icons.chevron_right),
+            Text(
+              "$value",
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2356E8),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded),
           ],
         ),
       ),
     );
   }
 
-  // ================= INFO =================
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF6E7A90),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Color(0xFF172033),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _infoCard({
+  Widget _section({
     required String title,
-    required List<String> items,
+    required Widget child,
   }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 10),
-          ...items.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(e),
-              )),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF172033),
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
         ],
       ),
     );
   }
-
-  // ================= SETTINGS =================
-
-  Widget _settingsButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const AccountScreen(),
-            ),
-          );
-        },
-        child: const Text("Innstillinger"),
-      ),
-    );
-  }
 }
-
-// ================= JOB LIST SCREEN =================
 
 class _JobListScreen extends StatelessWidget {
   final String title;

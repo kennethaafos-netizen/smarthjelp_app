@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
+import '../models/job.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatelessWidget {
@@ -13,40 +14,47 @@ class ChatListScreen extends StatelessWidget {
     final jobs = appState.chatJobs;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Meldinger')),
-      body: jobs.isEmpty
-          ? const Center(child: Text('Ingen chatter ennå'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: jobs.length,
-              itemBuilder: (_, i) {
-                final job = jobs[i];
-                final messages = appState.getMessagesForJob(job.id);
-                final lastText =
-                    messages.isNotEmpty ? messages.last.text : 'Ingen meldinger';
+      appBar: AppBar(title: const Text("Chat")),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: jobs.map((job) => _chatItem(context, job)).toList(),
+      ),
+    );
+  }
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    title: Text(job.title),
-                    subtitle: Text(
-                      lastText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(job: job),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
+  Widget _chatItem(BuildContext context, Job job) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue.shade100,
+          child: Text(job.title.substring(0, 1)),
+        ),
+
+        title: Text(
+          job.title,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+
+        subtitle: Text(job.locationName),
+
+        trailing: const Icon(Icons.chevron_right),
+
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(job: job),
             ),
+          );
+        },
+      ),
     );
   }
 }

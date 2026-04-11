@@ -1,13 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/job.dart';
-import '../models/user_profile.dart';
 import '../providers/app_state.dart';
-import '../widgets/rating_dialog.dart';
-import '../widgets/reserved_timer.dart';
 import 'chat_screen.dart';
 
 class JobDetailScreen extends StatelessWidget {
@@ -18,274 +13,358 @@ class JobDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    appState.checkExpiredReservations();
+    final currentJob = appState.jobs.firstWhere((j) => j.id == job.id);
 
-    final currentJob =
-        appState.jobs.firstWhere((j) => j.id == job.id, orElse: () => job);
-
-    final owner = appState.getJobOwner(currentJob);
+    final isOwner = currentJob.createdByUserId == appState.currentUser.id;
+    final isWorker = currentJob.acceptedByUserId == appState.currentUser.id;
+    final cancelRequestedByOther =
+        currentJob.cancelRequestedByUserId != null &&
+            currentJob.cancelRequestedByUserId != appState.currentUser.id;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FC),
-      body: Stack(
-        children: [
-          _headerImage(currentJob),
-          _content(context, currentJob, owner),
-          _topBar(context),
-          _bottomCTA(context, currentJob, appState, owner),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerImage(Job currentJob) {
-    if (currentJob.imageUrl != null && currentJob.imageUrl!.isNotEmpty) {
-      if (currentJob.imageUrl!.startsWith("http")) {
-        return Image.network(
-          currentJob.imageUrl!,
-          height: 280,
-          width: double.infinity,
-          fit: BoxFit.cover,
-        );
-      } else {
-        return Image.file(
-          File(currentJob.imageUrl!),
-          height: 280,
-          width: double.infinity,
-          fit: BoxFit.cover,
-        );
-      }
-    }
-
-    return Container(
-      height: 280,
-      color: Colors.blue.withOpacity(0.2),
-      child: const Center(
-        child: Icon(Icons.work, size: 80, color: Colors.blue),
-      ),
-    );
-  }
-
-  Widget _content(BuildContext context, Job currentJob, UserProfile owner) {
-    return Positioned.fill(
-      top: 240,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(
-          color: Color(0xFFF6F8FC),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-        ),
-        child: ListView(
+      backgroundColor: const Color(0xFFF4F7FC),
+      body: SafeArea(
+        child: Column(
           children: [
-            _titlePrice(currentJob),
-            const SizedBox(height: 12),
-            _location(currentJob),
-            const SizedBox(height: 12),
-            if (currentJob.status == JobStatus.reserved &&
-                currentJob.reservedUntil != null)
-              Column(
+            _header(context, currentJob),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: ReservedTimer(job: currentJob),
-                  ),
+                  _infoCard(currentJob),
                   const SizedBox(height: 16),
+                  _paymentCard(currentJob, isOwner),
+                  const SizedBox(height: 16),
+                  _chatPreview(context, currentJob),
                 ],
               ),
-            _userCard(owner),
-            const SizedBox(height: 16),
-            _description(currentJob),
-            const SizedBox(height: 120),
+            ),
+            _bottomActions(
+              context,
+              currentJob,
+              isOwner,
+              isWorker,
+              cancelRequestedByOther,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _titlePrice(Job currentJob) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            currentJob.title,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF18B7A6),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            "${currentJob.price} kr",
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _location(Job currentJob) {
-    return Row(
-      children: [
-        const Icon(Icons.location_on, color: Colors.blue),
-        const SizedBox(width: 6),
-        Text(currentJob.locationName),
-      ],
-    );
-  }
-
-  Widget _userCard(UserProfile owner) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+  Widget _header(BuildContext context, Job job) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          const CircleAvatar(radius: 24, child: Icon(Icons.person)),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(owner.firstName),
-              Text("⭐ ${owner.rating.toStringAsFixed(1)}"),
-            ],
-          )
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back),
+          ),
+          Expanded(
+            child: Text(
+              job.title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            "${job.price} kr",
+            style: const TextStyle(
+              color: Color(0xFF18B7A6),
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _description(Job currentJob) {
+  Widget _infoCard(Job job) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
       ),
-      child: Text(currentJob.description),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            job.category,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            job.description,
+            style: const TextStyle(fontSize: 15),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            job.locationName,
+            style: const TextStyle(color: Colors.grey),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _topBar(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            _circleBtn(Icons.arrow_back, () => Navigator.pop(context)),
-            const Spacer(),
+  Widget _paymentCard(Job job, bool isOwner) {
+    final statusText = !job.isPaymentReserved
+        ? "Venter på start"
+        : !job.isCompletedByWorker
+            ? "Jobb pågår"
+            : !job.isApprovedByOwner
+                ? "Venter på godkjenning"
+                : "Fullført";
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Betaling",
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          if (isOwner) ...[
+            Text("Du betaler: ${job.totalPrice.toStringAsFixed(0)} kr"),
+            Text("Gebyr/forsikring: ${job.fee.toStringAsFixed(0)} kr"),
+            Text("Utbetaling utfører: ${job.payout.toStringAsFixed(0)} kr"),
+          ] else ...[
+            Text("Du får: ${job.payout.toStringAsFixed(0)} kr"),
+            if (job.acceptedByUserId == null)
+              const Text("Betaling reserveres når du starter jobben."),
           ],
-        ),
+          const SizedBox(height: 8),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: job.isApprovedByOwner ? Colors.green : Colors.orange,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _circleBtn(IconData icon, VoidCallback onTap) {
+  Widget _chatPreview(BuildContext context, Job job) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(job: job),
+          ),
+        );
+      },
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(18),
         ),
-        child: Icon(icon),
+        child: Row(
+          children: const [
+            Icon(Icons.chat_bubble_outline),
+            SizedBox(width: 10),
+            Text("Åpne chat"),
+            Spacer(),
+            Icon(Icons.chevron_right),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _bottomCTA(
+  Widget _bottomActions(
     BuildContext context,
-    Job currentJob,
-    AppState appState,
-    UserProfile owner,
+    Job job,
+    bool isOwner,
+    bool isWorker,
+    bool cancelRequestedByOther,
   ) {
-    final canQuickTake = currentJob.status == JobStatus.open;
-    final canAskFirst = currentJob.status == JobStatus.open ||
-        currentJob.status == JobStatus.reserved ||
-        currentJob.status == JobStatus.inProgress;
+    final appState = context.read<AppState>();
 
-    final canComplete =
-        currentJob.status == JobStatus.inProgress &&
-        currentJob.acceptedByUserId == appState.currentUser.id;
-
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: const EdgeInsets.all(16),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
         color: Colors.white,
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: canAskFirst
-                    ? () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(job: currentJob),
-                          ),
-                        );
-                      }
-                    : null,
-                child: const Text("Start chat"),
-              ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (job.status == JobStatus.open)
+            _mainButton(
+              "Ta jobb",
+              () => appState.reserveJob(job.id),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: canComplete
-                    ? () async {
-                        final rating = await showDialog<double>(
-                          context: context,
-                          builder: (_) => const RatingDialog(),
-                        );
-
-                        if (rating != null) {
-                          appState.rateUser(
-                            userId: owner.id,
-                            newRating: rating,
-                          );
-                          appState.completeJob(currentJob.id);
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                          }
-                        }
-                      }
-                    : canQuickTake
-                        ? () {
-                            appState.reserveJob(currentJob.id);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(job: currentJob),
-                              ),
-                            );
-                          }
-                        : null,
-                child: Text(
-                  canComplete
-                      ? "Fullfør jobben"
-                      : canQuickTake
-                          ? "Ta oppdrag"
-                          : "Ikke tilgjengelig",
-                ),
-              ),
+          if (job.status == JobStatus.reserved && isWorker) ...[
+            _mainButton(
+              "Start jobb",
+              () => appState.startJob(job.id),
+            ),
+            const SizedBox(height: 10),
+            _dangerButton(
+              "Avbryt",
+              () => _cancelDialog(context, job),
             ),
           ],
+          if (job.status == JobStatus.inProgress &&
+              isWorker &&
+              !job.isCompletedByWorker) ...[
+            _mainButton(
+              "Fullfør",
+              () => appState.completeJobByWorker(job.id),
+            ),
+            const SizedBox(height: 10),
+            _dangerButton(
+              cancelRequestedByOther
+                  ? "Godkjenn avbrytelse"
+                  : "Be om avbrytelse",
+              () {
+                if (cancelRequestedByOther) {
+                  appState.approveCancel(job.id);
+                } else {
+                  _cancelDialog(context, job);
+                }
+              },
+            ),
+          ],
+          if (job.status == JobStatus.inProgress &&
+              job.isCompletedByWorker &&
+              isOwner) ...[
+            _mainButton(
+              "Godkjenn betaling",
+              () async {
+                appState.approveAndReleasePayment(job.id);
+                await _showRatingPopup(
+                  context,
+                  job.acceptedByUserId,
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            if (cancelRequestedByOther)
+              _dangerButton(
+                "Godkjenn avbrytelse",
+                () => appState.approveCancel(job.id),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _mainButton(String text, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: onTap,
+        child: Text(text),
+      ),
+    );
+  }
+
+  Widget _dangerButton(String text, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.red,
         ),
+        child: Text(text),
+      ),
+    );
+  }
+
+  void _cancelDialog(BuildContext context, Job job) {
+    final appState = context.read<AppState>();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Avbryt oppdrag"),
+        content: Text(
+          job.isPaymentReserved
+              ? "Pengene er reservert. Velger du OK, sendes en forespørsel som den andre parten må godkjenne."
+              : "Er du sikker på at du vil avbryte oppdraget?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Avbryt"),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              appState.cancelJob(job.id);
+            },
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRatingPopup(BuildContext context, String? userId) async {
+    if (userId == null) return;
+
+    double rating = 5;
+
+    await showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setLocalState) {
+          return AlertDialog(
+            title: const Text("Gi vurdering"),
+            content: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                final starValue = index + 1;
+                return IconButton(
+                  onPressed: () {
+                    setLocalState(() => rating = starValue.toDouble());
+                  },
+                  icon: Icon(
+                    Icons.star,
+                    color: starValue <= rating ? Colors.orange : Colors.grey,
+                  ),
+                );
+              }),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Senere"),
+              ),
+              FilledButton(
+                onPressed: () {
+                  context.read<AppState>().rateUser(
+                        userId: userId,
+                        newRating: rating,
+                      );
+                  Navigator.pop(context);
+                },
+                child: const Text("Send"),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

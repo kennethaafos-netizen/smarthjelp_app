@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'widgets/app_shell.dart';
 
 class SmartHjelpApp extends StatelessWidget {
@@ -77,7 +78,7 @@ class SmartHjelpApp extends StatelessWidget {
         cardTheme: CardThemeData(
           color: card,
           elevation: 0,
-          shadowColor: Colors.black.withValues(alpha: 0.04),
+          shadowColor: Colors.black.withOpacity(0.04),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
@@ -136,7 +137,7 @@ class SmartHjelpApp extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             foregroundColor: textDark,
             side: BorderSide(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: Colors.black.withOpacity(0.08),
             ),
             padding: const EdgeInsets.symmetric(
               horizontal: 18,
@@ -154,7 +155,7 @@ class SmartHjelpApp extends StatelessWidget {
         navigationBarTheme: NavigationBarThemeData(
           backgroundColor: Colors.white,
           elevation: 0,
-          indicatorColor: primary.withValues(alpha: 0.12),
+          indicatorColor: primary.withOpacity(0.12),
           height: 78,
           iconTheme: WidgetStateProperty.resolveWith((states) {
             final selected = states.contains(WidgetState.selected);

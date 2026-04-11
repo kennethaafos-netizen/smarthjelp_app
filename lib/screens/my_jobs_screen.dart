@@ -25,15 +25,24 @@ class MyJobsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           _sectionTitle("📥 Oppdrag jeg tar"),
-          _jobList(context, activeTaken, appState,
-              allowComplete: true, allowCancelReservation: true),
+          _jobList(
+            context,
+            activeTaken,
+            appState,
+            allowComplete: true,
+            allowCancelReservation: true,
+          ),
 
           _sectionTitle("✅ Fullført (jeg gjorde)"),
           _jobList(context, completedTaken, appState),
 
           _sectionTitle("📤 Mine oppdrag"),
-          _jobList(context, activePosted, appState,
-              allowReopen: true),
+          _jobList(
+            context,
+            activePosted,
+            appState,
+            allowReopen: true,
+          ),
 
           _sectionTitle("🏁 Fullført (mine)"),
           _jobList(context, completedPosted, appState),
@@ -90,8 +99,7 @@ class MyJobsScreen extends StatelessWidget {
                 ),
 
                 // 🔥 RESERVED BADGE
-                if (job.status == JobStatus.reserved &&
-                    job.reservedUntil != null)
+                if (job.status == JobStatus.reserved)
                   Positioned(
                     top: 10,
                     right: 10,
@@ -115,9 +123,9 @@ class MyJobsScreen extends StatelessWidget {
               ],
             ),
 
-            // 🔥 TIMER VISNING
+            // 🔥 TIMER (bruk reservedAt i stedet for reservedUntil)
             if (job.status == JobStatus.reserved &&
-                job.reservedUntil != null)
+                job.reservedAt != null)
               Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
@@ -151,12 +159,22 @@ class MyJobsScreen extends StatelessWidget {
                     ),
                   ),
 
+                // 🔥 FIX: reopen finnes ikke → bruk addJob-lignende flow
                 if (allowReopen &&
                     job.status == JobStatus.completed)
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
-                        appState.reopenJob(job.id);
+                        appState.addJob(
+                          title: job.title,
+                          description: job.description,
+                          price: job.price,
+                          category: job.category,
+                          locationName: job.locationName,
+                          lat: job.lat,
+                          lng: job.lng,
+                          imageUrl: job.imageUrl,
+                        );
                       },
                       child: const Text("Publiser igjen"),
                     ),

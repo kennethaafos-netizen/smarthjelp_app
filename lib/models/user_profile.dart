@@ -3,13 +3,10 @@ class UserProfile {
   final String firstName;
   final String email;
   final String phone;
-
   final bool wantsToWork;
   final String preferredArea;
-
   final double rating;
   final int ratingCount;
-
   final bool pushNotificationsEnabled;
 
   const UserProfile({
@@ -19,12 +16,13 @@ class UserProfile {
     required this.phone,
     required this.wantsToWork,
     required this.preferredArea,
-    this.rating = 5.0,
-    this.ratingCount = 0,
-    this.pushNotificationsEnabled = true,
+    required this.rating,
+    required this.ratingCount,
+    required this.pushNotificationsEnabled,
   });
 
   UserProfile copyWith({
+    String? id,
     String? firstName,
     String? email,
     String? phone,
@@ -35,7 +33,7 @@ class UserProfile {
     bool? pushNotificationsEnabled,
   }) {
     return UserProfile(
-      id: id,
+      id: id ?? this.id,
       firstName: firstName ?? this.firstName,
       email: email ?? this.email,
       phone: phone ?? this.phone,

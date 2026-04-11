@@ -1,24 +1,17 @@
 const List<String> kCategories = [
-  'Flyttehjelp',
-  'Hagearbeid',
-  'Montering',
-  'Rengjøring',
-  'Bæring',
-  'Småreparasjoner',
-  'Annet',
-];
-
-const List<String> kScopes = [
-  'Liten jobb',
-  'Halv dag',
-  'Hel dag',
-  'Fast avtale',
+  "Hage",
+  "Flytting",
+  "Montering",
+  "Renhold",
+  "Transport",
+  "Maling",
+  "Vinter",
+  "Annet",
 ];
 
 const List<String> kLocations = [
-  'Skien',
-  'Porsgrunn',
-  'Bamble',
-  'Siljan',
-  'Kragerø',
+  "Skien",
+  "Porsgrunn",
+  "Bamble",
+  "Stathelle",
 ];

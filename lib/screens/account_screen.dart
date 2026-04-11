@@ -17,7 +17,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late TextEditingController _areaCtrl;
 
   late bool _wantsToWork;
-  late bool _pushEnabled; // 🔥 NY
+  late bool _pushEnabled;
 
   @override
   void initState() {
@@ -31,7 +31,7 @@ class _AccountScreenState extends State<AccountScreen> {
     _areaCtrl = TextEditingController(text: user.preferredArea);
 
     _wantsToWork = user.wantsToWork;
-    _pushEnabled = user.pushNotificationsEnabled; // 🔥 NY
+    _pushEnabled = user.pushNotificationsEnabled;
   }
 
   @override
@@ -57,48 +57,36 @@ class _AccountScreenState extends State<AccountScreen> {
             decoration: const InputDecoration(labelText: 'Navn'),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _emailCtrl,
             decoration: const InputDecoration(labelText: 'E-post'),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _phoneCtrl,
             decoration: const InputDecoration(labelText: 'Telefon'),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _areaCtrl,
             decoration: const InputDecoration(labelText: 'Område'),
           ),
-
           const SizedBox(height: 12),
-
-          // 🔥 JOB SWITCH
           SwitchListTile(
             value: _wantsToWork,
-            title: const Text('Jeg vil tjene penger'),
-            subtitle: const Text('Få varsler og se relevante oppdrag'),
+            title: const Text('Jeg vil ta oppdrag'),
             onChanged: (value) {
               setState(() => _wantsToWork = value);
             },
           ),
-
-          // 🔥 NY: PUSH SWITCH (DET DU VILLE HA)
           SwitchListTile(
             value: _pushEnabled,
-            title: const Text('Få oppdrag (push)'),
-            subtitle: const Text('Varsel når nye jobber kommer'),
+            title: const Text('Push varsler'),
             onChanged: (value) {
               setState(() => _pushEnabled = value);
             },
           ),
-
           const SizedBox(height: 20),
-
           FilledButton(
             onPressed: () {
               appState.updateProfile(
@@ -109,7 +97,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 preferredArea: _areaCtrl.text.trim(),
               );
 
-              // 🔥 LAGRE PUSH
               appState.setPushNotifications(_pushEnabled);
 
               Navigator.pop(context);

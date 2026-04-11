@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../models/job.dart';
 import '../providers/app_state.dart';
+import '../widgets/job_card.dart';
+import '../widgets/reserved_timer.dart';
 import 'job_detail_screen.dart';
 
 class JobsScreen extends StatefulWidget {
@@ -13,129 +15,167 @@ class JobsScreen extends StatefulWidget {
 }
 
 class _JobsScreenState extends State<JobsScreen> {
-  String selectedCategory = "Alle";
-
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
-    List<Job> jobs = appState.sortedOpenJobs;
-
-    if (selectedCategory != "Alle") {
-      jobs = jobs.where((j) => j.category == selectedCategory).toList();
-    }
+    final activeTaken = appState.activeTakenJobs;
+    final completedTaken = appState.completedTakenJobs;
+    final activePosted = appState.activePostedJobs;
+    final completedPosted = appState.completedPostedJobs;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Oppdrag"),
-      ),
-      body: Column(
+      appBar: AppBar(title: const Text("Mine oppdrag")),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          _categoryFilter(),
-          Expanded(
-            child: jobs.isEmpty
-                ? const Center(child: Text("Ingen oppdrag tilgjengelig"))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: jobs.length,
-                    itemBuilder: (_, i) => _jobCard(jobs[i]),
-                  ),
+          _sectionTitle("📥 Oppdrag jeg tar"),
+          _jobList(
+            context,
+            activeTaken,
+            appState,
+            allowComplete: true,
+            allowCancelReservation: true,
           ),
+          _sectionTitle("✅ Fullført (jeg gjorde)"),
+          _jobList(context, completedTaken, appState),
+          _sectionTitle("📤 Mine oppdrag"),
+          _jobList(
+            context,
+            activePosted,
+            appState,
+            allowReopen: true,
+          ),
+          _sectionTitle("🏁 Fullført (mine)"),
+          _jobList(context, completedPosted, appState),
         ],
       ),
     );
   }
 
-  Widget _categoryFilter() {
-    final cats = ["Alle", "Flyttehjelp", "Hagearbeid", "Rengjøring", "Annet"];
-
-    return SizedBox(
-      height: 56,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        children: cats.map((c) {
-          final active = selectedCategory == c;
-
-          return GestureDetector(
-            onTap: () => setState(() => selectedCategory = c),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: active ? Colors.blue : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Center(
-                child: Text(
-                  c,
-                  style: TextStyle(
-                    color: active ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
 
-  Widget _jobCard(Job job) {
-    return GestureDetector(
-      onTap: () {
-        context.read<AppState>().incrementView(job.id);
+  Widget _jobList(
+    BuildContext context,
+    List<Job> jobs,
+    AppState appState, {
+    bool allowComplete = false,
+    bool allowReopen = false,
+    bool allowCancelReservation = false,
+  }) {
+    if (jobs.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Text("Ingen oppdrag"),
+      );
+    }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => JobDetailScreen(job: job),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
+    return Column(
+      children: jobs.map((job) {
+        return Column(
           children: [
-            const Icon(Icons.work, color: Colors.blue),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(job.title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  Text(job.locationName,
-                      style: TextStyle(color: Colors.grey.shade600)),
-                  const SizedBox(height: 6),
-                  Text("👁️ ${job.viewCount}",
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                ],
-              ),
+            Stack(
+              children: [
+                JobCard(
+                  job: job,
+                  distanceText: job.locationName,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => JobDetailScreen(job: job),
+                      ),
+                    );
+                  },
+                ),
+                if (job.status == JobStatus.reserved)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        "Reservert",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            Text("${job.price} kr",
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Colors.green)),
+            if (job.status == JobStatus.reserved && job.reservedAt != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ReservedTimer(job: job),
+                ),
+              ),
+            Row(
+              children: [
+                if (allowComplete && job.status == JobStatus.inProgress)
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        appState.completeJob(job.id);
+                      },
+                      child: const Text("Fullfør"),
+                    ),
+                  ),
+                if (allowCancelReservation && job.status == JobStatus.reserved)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        appState.releaseJob(job.id);
+                      },
+                      child: const Text("Avbryt"),
+                    ),
+                  ),
+                if (allowReopen && job.status == JobStatus.completed)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        appState.addJob(
+                          title: job.title,
+                          description: job.description,
+                          price: job.price,
+                          category: job.category,
+                          locationName: job.locationName,
+                          lat: job.lat,
+                          lng: job.lng,
+                          imageUrl: job.imageUrl,
+                        );
+                      },
+                      child: const Text("Publiser igjen"),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
           ],
-        ),
-      ),
+        );
+      }).toList(),
     );
   }
 }

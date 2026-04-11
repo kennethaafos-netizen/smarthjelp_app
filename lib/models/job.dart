@@ -10,23 +10,21 @@ class Job {
   final String title;
   final String description;
   final int price;
-
   final String locationName;
   final double lat;
   final double lng;
-
   final String category;
   final String? imageUrl;
-
   final String createdByUserId;
   final String? acceptedByUserId;
-
   final JobStatus status;
   final DateTime createdAt;
-
   final int viewCount;
-
   final DateTime? reservedAt;
+  final bool isPaymentReserved;
+  final bool isCompletedByWorker;
+  final bool isApprovedByOwner;
+  final String? cancelRequestedByUserId;
 
   const Job({
     required this.id,
@@ -37,22 +35,30 @@ class Job {
     required this.lat,
     required this.lng,
     required this.category,
-    this.imageUrl,
     required this.createdByUserId,
-    this.acceptedByUserId,
     required this.status,
     required this.createdAt,
+    this.imageUrl,
+    this.acceptedByUserId,
     this.viewCount = 0,
     this.reservedAt,
+    this.isPaymentReserved = false,
+    this.isCompletedByWorker = false,
+    this.isApprovedByOwner = false,
+    this.cancelRequestedByUserId,
   });
 
-  // 🔥 AUTO CALCULATED TIMER (DET DU MANGLER)
   DateTime? get reservedUntil {
     if (reservedAt == null) return null;
     return reservedAt!.add(const Duration(minutes: 10));
   }
 
+  double get fee => price * 0.10;
+  double get totalPrice => price + fee;
+  double get payout => price.toDouble();
+
   Job copyWith({
+    String? id,
     String? title,
     String? description,
     int? price,
@@ -60,15 +66,20 @@ class Job {
     double? lat,
     double? lng,
     String? category,
-    String? imageUrl,
-
-    Object? acceptedByUserId = _noChange,
+    Object? imageUrl = _sentinel,
+    String? createdByUserId,
+    Object? acceptedByUserId = _sentinel,
     JobStatus? status,
+    DateTime? createdAt,
     int? viewCount,
-    DateTime? reservedAt,
+    Object? reservedAt = _sentinel,
+    bool? isPaymentReserved,
+    bool? isCompletedByWorker,
+    bool? isApprovedByOwner,
+    Object? cancelRequestedByUserId = _sentinel,
   }) {
     return Job(
-      id: id,
+      id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
       price: price ?? this.price,
@@ -76,17 +87,26 @@ class Job {
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       category: category ?? this.category,
-      imageUrl: imageUrl ?? this.imageUrl,
-      createdByUserId: createdByUserId,
-      acceptedByUserId: acceptedByUserId == _noChange
+      imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
+      acceptedByUserId: acceptedByUserId == _sentinel
           ? this.acceptedByUserId
           : acceptedByUserId as String?,
       status: status ?? this.status,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
       viewCount: viewCount ?? this.viewCount,
-      reservedAt: reservedAt ?? this.reservedAt,
+      reservedAt:
+          reservedAt == _sentinel ? this.reservedAt : reservedAt as DateTime?,
+      isPaymentReserved: isPaymentReserved ?? this.isPaymentReserved,
+      isCompletedByWorker:
+          isCompletedByWorker ?? this.isCompletedByWorker,
+      isApprovedByOwner: isApprovedByOwner ?? this.isApprovedByOwner,
+      cancelRequestedByUserId:
+          cancelRequestedByUserId == _sentinel
+              ? this.cancelRequestedByUserId
+              : cancelRequestedByUserId as String?,
     );
   }
 
-  static const _noChange = Object();
+  static const _sentinel = Object();
 }
