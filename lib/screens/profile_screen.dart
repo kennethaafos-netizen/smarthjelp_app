@@ -53,30 +53,35 @@ class ProfileScreen extends StatelessWidget {
                       jobs: activeTaken
                           .where((j) => j.status == JobStatus.reserved)
                           .toList(),
+                      color: Colors.orange.shade50,
                     ),
                     _statusRow(
                       context,
                       label: "Oppdrag jeg tar",
                       value: activeTaken.length,
                       jobs: activeTaken,
+                      color: Colors.blue.shade50,
                     ),
                     _statusRow(
                       context,
                       label: "Fullført av meg",
                       value: completedTaken.length,
                       jobs: completedTaken,
+                      color: Colors.green.shade50,
                     ),
                     _statusRow(
                       context,
                       label: "Mine aktive oppdrag",
                       value: activePosted.length,
                       jobs: activePosted,
+                      color: Colors.purple.shade50,
                     ),
                     _statusRow(
                       context,
                       label: "Mine fullførte oppdrag",
                       value: completedPosted.length,
                       jobs: completedPosted,
+                      color: Colors.grey.shade200,
                     ),
                   ],
                 ),
@@ -97,7 +102,21 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
+
               const SizedBox(height: 16),
+
+              // 🔥 EXPORT KNAPP
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _showExportDialog(context, appState),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text("Eksporter rapport"),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -123,6 +142,159 @@ class ProfileScreen extends StatelessWidget {
                   child: const Text("Bytt bruker (test)"),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🔥 FIXED EXPORT (kun én versjon)
+  void _showExportDialog(BuildContext context, AppState appState) {
+    final now = DateTime.now();
+    int selectedYear = now.year;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            final earned = appState.completedTakenJobs
+                .where((j) => j.createdAt.year == selectedYear)
+                .toList();
+
+            final spent = appState.completedPostedJobs
+                .where((j) => j.createdAt.year == selectedYear)
+                .toList();
+
+            final totalEarned =
+                earned.fold(0, (sum, j) => sum + j.price);
+            final totalSpent =
+                spent.fold(0, (sum, j) => sum + j.price);
+
+            String formatDate(DateTime d) =>
+                "${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}";
+
+            final csv = StringBuffer();
+
+            csv.writeln("Type,Dato,Tittel,Beløp");
+
+            for (var j in earned) {
+              csv.writeln(
+                  "Inntekt,${formatDate(j.createdAt)},${j.title},${j.price}");
+            }
+
+            for (var j in spent) {
+              csv.writeln(
+                  "Kostnad,${formatDate(j.createdAt)},${j.title},-${j.price}");
+            }
+
+            return AlertDialog(
+              title: const Text("Eksporter rapport"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButton<int>(
+                      value: selectedYear,
+                      items: List.generate(5, (i) => now.year - i)
+                          .map((year) => DropdownMenuItem(
+                                value: year,
+                                child: Text("$year"),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setState(() => selectedYear = v);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Tjent: $totalEarned kr\nBrukt: $totalSpent kr",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      "CSV (kopier til Excel/regnskapsfører):",
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      height: 200,
+                      child: SingleChildScrollView(
+                        child: Text(
+                          csv.toString(),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Lukk"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+
+  Widget _statusRow(
+    BuildContext context, {
+    required String label,
+    required int value,
+    required List<Job> jobs,
+    required Color color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => _JobListScreen(title: label, jobs: jobs),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF172033),
+                  ),
+                ),
+              ),
+              Text(
+                "$value",
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF2356E8),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded),
             ],
           ),
         ),
@@ -271,50 +443,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusRow(
-    BuildContext context, {
-    required String label,
-    required int value,
-    required List<Job> jobs,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => _JobListScreen(title: label, jobs: jobs),
-          ),
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF172033),
-                ),
-              ),
-            ),
-            Text(
-              "$value",
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF2356E8),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _infoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -381,6 +509,7 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
+// 🔥 PREMIUM JOB LIST + BADGE
 class _JobListScreen extends StatelessWidget {
   final String title;
   final List<Job> jobs;
@@ -390,9 +519,49 @@ class _JobListScreen extends StatelessWidget {
     required this.jobs,
   });
 
+  Widget _statusBadge(JobStatus status) {
+    Color color;
+    String text;
+
+    switch (status) {
+      case JobStatus.reserved:
+        color = Colors.orange;
+        text = "Reservert";
+        break;
+      case JobStatus.inProgress:
+        color = Colors.blue;
+        text = "Pågår";
+        break;
+      case JobStatus.completed:
+        color = Colors.green;
+        text = "Fullført";
+        break;
+      default:
+        color = Colors.grey;
+        text = "Åpen";
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FC),
       appBar: AppBar(title: Text(title)),
       body: jobs.isEmpty
           ? const Center(child: Text("Ingen oppdrag"))
@@ -402,18 +571,59 @@ class _JobListScreen extends StatelessWidget {
               itemBuilder: (_, i) {
                 final job = jobs[i];
 
-                return ListTile(
-                  title: Text(job.title),
-                  subtitle: Text("${job.price} kr"),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JobDetailScreen(job: job),
-                      ),
-                    );
-                  },
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => JobDetailScreen(job: job),
+                        ),
+                      );
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                job.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            _statusBadge(job.status),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(job.locationName),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("${job.price} kr"),
+                            const Icon(Icons.chevron_right),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

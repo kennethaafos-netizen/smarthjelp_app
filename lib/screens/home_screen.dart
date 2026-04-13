@@ -278,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ElevatedButton(
                             onPressed: () {
                               context.read<AppState>().reserveJob(job.id);
+                              _openJob(job);
                             },
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
