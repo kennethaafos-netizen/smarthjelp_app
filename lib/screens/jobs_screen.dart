@@ -37,8 +37,10 @@ class _JobsScreenState extends State<JobsScreen> {
             allowComplete: true,
             allowCancelReservation: true,
           ),
+
           _sectionTitle("✅ Fullført (jeg gjorde)"),
           _jobList(context, completedTaken, appState),
+
           _sectionTitle("📤 Mine oppdrag"),
           _jobList(
             context,
@@ -46,6 +48,7 @@ class _JobsScreenState extends State<JobsScreen> {
             appState,
             allowReopen: true,
           ),
+
           _sectionTitle("🏁 Fullført (mine)"),
           _jobList(context, completedPosted, appState),
         ],
@@ -84,7 +87,10 @@ class _JobsScreenState extends State<JobsScreen> {
     return Column(
       children: jobs.map((job) {
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            /// 🔥 JOB CARD + STATUS BADGE
             Stack(
               children: [
                 JobCard(
@@ -99,6 +105,7 @@ class _JobsScreenState extends State<JobsScreen> {
                     );
                   },
                 ),
+
                 if (job.status == JobStatus.reserved)
                   Positioned(
                     top: 10,
@@ -124,14 +131,19 @@ class _JobsScreenState extends State<JobsScreen> {
                   ),
               ],
             ),
-            if (job.status == JobStatus.reserved && job.reservedAt != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: ReservedTimer(job: job),
+
+            /// 🔥 TIMER (FIXET)
+            if (job.status == JobStatus.reserved &&
+                job.reservedUntil != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ReservedTimer(
+                  jobId: job.id,
+                  reservedUntil: job.reservedUntil!,
                 ),
               ),
+
+            /// 🔥 ACTION BUTTONS
             Row(
               children: [
                 if (allowComplete && job.status == JobStatus.inProgress)
@@ -143,7 +155,9 @@ class _JobsScreenState extends State<JobsScreen> {
                       child: const Text("Fullfør"),
                     ),
                   ),
-                if (allowCancelReservation && job.status == JobStatus.reserved)
+
+                if (allowCancelReservation &&
+                    job.status == JobStatus.reserved)
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
@@ -152,6 +166,7 @@ class _JobsScreenState extends State<JobsScreen> {
                       child: const Text("Avbryt"),
                     ),
                   ),
+
                 if (allowReopen && job.status == JobStatus.completed)
                   Expanded(
                     child: OutlinedButton(
@@ -172,6 +187,7 @@ class _JobsScreenState extends State<JobsScreen> {
                   ),
               ],
             ),
+
             const SizedBox(height: 12),
           ],
         );

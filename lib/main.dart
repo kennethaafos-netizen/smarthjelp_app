@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ NY
 
 import 'providers/app_state.dart';
 import 'widgets/app_shell.dart';
@@ -17,6 +18,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🔥 FIREBASE INIT (BEHOLDES)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -25,8 +27,17 @@ void main() async {
     _firebaseMessagingBackgroundHandler,
   );
 
-  // 🔔 Be om push permission
+  // 🔔 Push permission
   await FirebaseMessaging.instance.requestPermission();
+
+  // 🚀 SUPABASE INIT (NYTT)
+  await Supabase.initialize(
+    // 🔥 LIM INN HER:
+    url: 'https://yuzjubqzngsjzwfrucxg.supabase.co',
+    
+    // 🔥 LIM INN HER:
+    anonKey: 'sb_publishable_PzzcCP5I-vD1bm-XaoNYlA_1veFC31d',
+  );
 
   runApp(const SmartHjelpApp());
 }
@@ -42,11 +53,10 @@ class SmartHjelpApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'SmartHjelp',
 
-        // 🔥 GLOBAL THEME (NY)
+        // 🔥 GLOBAL THEME
         theme: ThemeData(
           useMaterial3: true,
 
-          // 🎨 Farger
           colorScheme: ColorScheme.fromSeed(
             seedColor: const Color(0xFF4A8BFF),
             primary: const Color(0xFF4A8BFF),
@@ -55,10 +65,8 @@ class SmartHjelpApp extends StatelessWidget {
 
           scaffoldBackgroundColor: const Color(0xFFF6F8FC),
 
-          // 🔤 Font
           textTheme: GoogleFonts.interTextTheme(),
 
-          // 🔘 Knapper
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               elevation: 0,
@@ -102,7 +110,6 @@ class SmartHjelpApp extends StatelessWidget {
             ),
           ),
 
-          // 🧾 Input fields
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: Colors.white,
@@ -116,7 +123,6 @@ class SmartHjelpApp extends StatelessWidget {
             ),
           ),
 
-          // 📦 Cards
           cardTheme: CardThemeData(
             elevation: 0,
             color: Colors.white,
@@ -125,7 +131,6 @@ class SmartHjelpApp extends StatelessWidget {
             ),
           ),
 
-          // 🧭 AppBar
           appBarTheme: const AppBarTheme(
             backgroundColor: Colors.transparent,
             elevation: 0,

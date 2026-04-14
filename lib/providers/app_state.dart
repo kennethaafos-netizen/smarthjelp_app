@@ -5,6 +5,67 @@ import '../models/chat_message.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
 
+enum TaxTransactionType {
+  income,
+  expense,
+}
+
+class TaxReportEntry {
+  final String id;
+  final TaxTransactionType type;
+  final DateTime date;
+  final String jobTitle;
+  final String category;
+  final String locationName;
+  final double amount;
+  final String sourceJobId;
+
+  const TaxReportEntry({
+    required this.id,
+    required this.type,
+    required this.date,
+    required this.jobTitle,
+    required this.category,
+    required this.locationName,
+    required this.amount,
+    required this.sourceJobId,
+  });
+
+  String get typeLabel {
+    switch (type) {
+      case TaxTransactionType.income:
+        return 'Inntekt';
+      case TaxTransactionType.expense:
+        return 'Kostnad';
+    }
+  }
+
+  bool get isIncome => type == TaxTransactionType.income;
+}
+
+class TaxReportSummary {
+  final int year;
+  final List<TaxReportEntry> entries;
+  final double totalIncome;
+  final double totalExpenses;
+
+  const TaxReportSummary({
+    required this.year,
+    required this.entries,
+    required this.totalIncome,
+    required this.totalExpenses,
+  });
+
+  double get net => totalIncome - totalExpenses;
+  int get transactionCount => entries.length;
+
+  List<TaxReportEntry> get incomeEntries =>
+      entries.where((e) => e.type == TaxTransactionType.income).toList();
+
+  List<TaxReportEntry> get expenseEntries =>
+      entries.where((e) => e.type == TaxTransactionType.expense).toList();
+}
+
 class AppState extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
 
@@ -30,6 +91,7 @@ class AppState extends ChangeNotifier {
   void switchUser() {
     final ids = _users.keys.toList();
     if (ids.length < 2) return;
+
     final currentIndex = ids.indexOf(_currentUser.id);
     final nextIndex = (currentIndex + 1) % ids.length;
     _currentUser = _users[ids[nextIndex]]!;
@@ -38,15 +100,18 @@ class AppState extends ChangeNotifier {
 
   List<Job> get smartRankedJobs {
     final list = _jobs.where((j) => j.status == JobStatus.open).toList();
+
     list.sort((a, b) {
       final aFresh =
           DateTime.now().difference(a.createdAt).inHours < 24 ? 10 : 0;
       final bFresh =
           DateTime.now().difference(b.createdAt).inHours < 24 ? 10 : 0;
+
       final aScore = a.viewCount + aFresh;
       final bScore = b.viewCount + bFresh;
       return bScore.compareTo(aScore);
     });
+
     return list;
   }
 
@@ -102,9 +167,73 @@ class AppState extends ChangeNotifier {
   double get moneySpent =>
       completedPostedJobs.fold(0, (sum, job) => sum + job.totalPrice);
 
+  List<int> get availableTaxReportYears {
+    final years = <int>{
+      DateTime.now().year,
+      ...completedTakenJobs.map((j) => j.createdAt.year),
+      ...completedPostedJobs.map((j) => j.createdAt.year),
+    }.toList();
+
+    years.sort((a, b) => b.compareTo(a));
+    return years;
+  }
+
+  TaxReportSummary buildTaxReportForYear(int year) {
+    final incomeEntries = completedTakenJobs
+        .where((job) => job.createdAt.year == year)
+        .map(
+          (job) => TaxReportEntry(
+            id: 'income_${job.id}',
+            type: TaxTransactionType.income,
+            date: job.createdAt,
+            jobTitle: job.title,
+            category: job.category,
+            locationName: job.locationName,
+            amount: job.payout,
+            sourceJobId: job.id,
+          ),
+        )
+        .toList();
+
+    final expenseEntries = completedPostedJobs
+        .where((job) => job.createdAt.year == year)
+        .map(
+          (job) => TaxReportEntry(
+            id: 'expense_${job.id}',
+            type: TaxTransactionType.expense,
+            date: job.createdAt,
+            jobTitle: job.title,
+            category: job.category,
+            locationName: job.locationName,
+            amount: job.totalPrice,
+            sourceJobId: job.id,
+          ),
+        )
+        .toList();
+
+    final entries = <TaxReportEntry>[
+      ...incomeEntries,
+      ...expenseEntries,
+    ]..sort((a, b) => b.date.compareTo(a.date));
+
+    final totalIncome =
+        incomeEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
+
+    final totalExpenses =
+        expenseEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
+
+    return TaxReportSummary(
+      year: year,
+      entries: entries,
+      totalIncome: totalIncome,
+      totalExpenses: totalExpenses,
+    );
+  }
+
   void _replaceJob(Job updated) {
     final index = _jobs.indexWhere((j) => j.id == updated.id);
     if (index == -1) return;
+
     _jobs[index] = updated;
     notifyListeners();
   }
@@ -176,6 +305,28 @@ class AppState extends ChangeNotifier {
         cancelRequestedByUserId: null,
       ),
     );
+  }
+
+  void expireReservation(String id) {
+    final index = _jobs.indexWhere((j) => j.id == id);
+    if (index == -1) return;
+
+    final job = _jobs[index];
+
+    if (job.status != JobStatus.reserved) return;
+
+    _jobs[index] = job.copyWith(
+      status: JobStatus.open,
+      acceptedByUserId: null,
+      reservedAt: null,
+      isPaymentReserved: false,
+      isCompletedByWorker: false,
+      isApprovedByOwner: false,
+      cancelRequestedByUserId: null,
+    );
+
+    _systemMessage(id, 'Reservasjonen utløp automatisk.');
+    notifyListeners();
   }
 
   void startJob(String id) {

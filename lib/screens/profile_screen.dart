@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import 'account_screen.dart';
+import 'export_screen.dart';
 import 'job_detail_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -102,21 +103,23 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // 🔥 EXPORT KNAPP
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => _showExportDialog(context, appState),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ExportScreen(),
+                      ),
+                    );
+                  },
                   icon: const Icon(Icons.file_download_outlined),
                   label: const Text("Eksporter rapport"),
                 ),
               ),
-
               const SizedBox(height: 16),
-
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -148,107 +151,6 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
-
-  // 🔥 FIXED EXPORT (kun én versjon)
-  void _showExportDialog(BuildContext context, AppState appState) {
-    final now = DateTime.now();
-    int selectedYear = now.year;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setState) {
-            final earned = appState.completedTakenJobs
-                .where((j) => j.createdAt.year == selectedYear)
-                .toList();
-
-            final spent = appState.completedPostedJobs
-                .where((j) => j.createdAt.year == selectedYear)
-                .toList();
-
-            final totalEarned =
-                earned.fold(0, (sum, j) => sum + j.price);
-            final totalSpent =
-                spent.fold(0, (sum, j) => sum + j.price);
-
-            String formatDate(DateTime d) =>
-                "${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}";
-
-            final csv = StringBuffer();
-
-            csv.writeln("Type,Dato,Tittel,Beløp");
-
-            for (var j in earned) {
-              csv.writeln(
-                  "Inntekt,${formatDate(j.createdAt)},${j.title},${j.price}");
-            }
-
-            for (var j in spent) {
-              csv.writeln(
-                  "Kostnad,${formatDate(j.createdAt)},${j.title},-${j.price}");
-            }
-
-            return AlertDialog(
-              title: const Text("Eksporter rapport"),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButton<int>(
-                      value: selectedYear,
-                      items: List.generate(5, (i) => now.year - i)
-                          .map((year) => DropdownMenuItem(
-                                value: year,
-                                child: Text("$year"),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setState(() => selectedYear = v);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Tjent: $totalEarned kr\nBrukt: $totalSpent kr",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      "CSV (kopier til Excel/regnskapsfører):",
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      height: 200,
-                      child: SingleChildScrollView(
-                        child: Text(
-                          csv.toString(),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text("Lukk"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
 
   Widget _statusRow(
     BuildContext context, {
@@ -509,7 +411,6 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// 🔥 PREMIUM JOB LIST + BADGE
 class _JobListScreen extends StatelessWidget {
   final String title;
   final List<Job> jobs;

@@ -35,7 +35,6 @@ class JobDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   _paymentCard(currentJob, isOwner),
                   const SizedBox(height: 16),
-                  _chatPreview(context, currentJob),
                 ],
               ),
             ),
@@ -101,15 +100,9 @@ class JobDetailScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            job.description,
-            style: const TextStyle(fontSize: 15),
-          ),
+          Text(job.description),
           const SizedBox(height: 10),
-          Text(
-            job.locationName,
-            style: const TextStyle(color: Colors.grey),
-          ),
+          Text(job.locationName, style: const TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -133,19 +126,15 @@ class JobDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Betaling",
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
+          const Text("Betaling",
+              style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           if (isOwner) ...[
             Text("Du betaler: ${job.totalPrice.toStringAsFixed(0)} kr"),
-            Text("Gebyr/forsikring: ${job.fee.toStringAsFixed(0)} kr"),
-            Text("Utbetaling utfører: ${job.payout.toStringAsFixed(0)} kr"),
+            Text("Gebyr: ${job.fee.toStringAsFixed(0)} kr"),
+            Text("Utbetaling: ${job.payout.toStringAsFixed(0)} kr"),
           ] else ...[
             Text("Du får: ${job.payout.toStringAsFixed(0)} kr"),
-            if (job.acceptedByUserId == null)
-              const Text("Betaling reserveres når du starter jobben."),
           ],
           const SizedBox(height: 8),
           Text(
@@ -160,35 +149,6 @@ class JobDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _chatPreview(BuildContext context, Job job) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatScreen(job: job),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          children: const [
-            Icon(Icons.chat_bubble_outline),
-            SizedBox(width: 10),
-            Text("Åpne chat"),
-            Spacer(),
-            Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _bottomActions(
     BuildContext context,
     Job job,
@@ -197,6 +157,38 @@ class JobDetailScreen extends StatelessWidget {
     bool cancelRequestedByOther,
   ) {
     final appState = context.read<AppState>();
+
+    // 🔥 KEY FIX
+    final showChat = job.acceptedByUserId != null;
+
+    Widget chatButton = Expanded(
+      child: OutlinedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(job: job),
+            ),
+          );
+        },
+        icon: const Icon(Icons.chat_bubble_outline),
+        label: const Text("Chat"),
+      ),
+    );
+
+    Widget mainWithChat(String text, VoidCallback onTap) {
+      if (!showChat) {
+        return _mainButton(text, onTap);
+      }
+
+      return Row(
+        children: [
+          chatButton,
+          const SizedBox(width: 10),
+          Expanded(child: _mainButton(text, onTap)),
+        ],
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -207,13 +199,17 @@ class JobDetailScreen extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+
+          // 🔵 OPEN
           if (job.status == JobStatus.open)
             _mainButton(
               "Ta jobb",
               () => appState.reserveJob(job.id),
             ),
+
+          // 🟠 RESERVED
           if (job.status == JobStatus.reserved && isWorker) ...[
-            _mainButton(
+            mainWithChat(
               "Start jobb",
               () => appState.startJob(job.id),
             ),
@@ -223,10 +219,12 @@ class JobDetailScreen extends StatelessWidget {
               () => _cancelDialog(context, job),
             ),
           ],
+
+          // 🔵 IN PROGRESS
           if (job.status == JobStatus.inProgress &&
               isWorker &&
               !job.isCompletedByWorker) ...[
-            _mainButton(
+            mainWithChat(
               "Fullfør",
               () => appState.completeJobByWorker(job.id),
             ),
@@ -244,25 +242,18 @@ class JobDetailScreen extends StatelessWidget {
               },
             ),
           ],
+
+          // 🟢 OWNER
           if (job.status == JobStatus.inProgress &&
               job.isCompletedByWorker &&
               isOwner) ...[
-            _mainButton(
+            mainWithChat(
               "Godkjenn betaling",
               () async {
                 appState.approveAndReleasePayment(job.id);
-                await _showRatingPopup(
-                  context,
-                  job.acceptedByUserId,
-                );
+                await _showRatingPopup(context, job.acceptedByUserId);
               },
             ),
-            const SizedBox(height: 10),
-            if (cancelRequestedByOther)
-              _dangerButton(
-                "Godkjenn avbrytelse",
-                () => appState.approveCancel(job.id),
-              ),
           ],
         ],
       ),
@@ -272,10 +263,7 @@ class JobDetailScreen extends StatelessWidget {
   Widget _mainButton(String text, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
-      child: FilledButton(
-        onPressed: onTap,
-        child: Text(text),
-      ),
+      child: FilledButton(onPressed: onTap, child: Text(text)),
     );
   }
 
@@ -284,9 +272,7 @@ class JobDetailScreen extends StatelessWidget {
       width: double.infinity,
       child: OutlinedButton(
         onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.red,
-        ),
+        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
         child: Text(text),
       ),
     );
@@ -299,29 +285,25 @@ class JobDetailScreen extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("Avbryt oppdrag"),
-        content: Text(
-          job.isPaymentReserved
-              ? "Pengene er reservert. Velger du OK, sendes en forespørsel som den andre parten må godkjenne."
-              : "Er du sikker på at du vil avbryte oppdraget?",
-        ),
+        content: const Text("Er du sikker?"),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Avbryt"),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Nei")),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
               appState.cancelJob(job.id);
             },
-            child: const Text("OK"),
+            child: const Text("Ja"),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _showRatingPopup(BuildContext context, String? userId) async {
+  Future<void> _showRatingPopup(
+      BuildContext context, String? userId) async {
     if (userId == null) return;
 
     double rating = 5;
@@ -335,14 +317,14 @@ class JobDetailScreen extends StatelessWidget {
             content: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(5, (index) {
-                final starValue = index + 1;
+                final star = index + 1;
                 return IconButton(
                   onPressed: () {
-                    setLocalState(() => rating = starValue.toDouble());
+                    setLocalState(() => rating = star.toDouble());
                   },
                   icon: Icon(
                     Icons.star,
-                    color: starValue <= rating ? Colors.orange : Colors.grey,
+                    color: star <= rating ? Colors.orange : Colors.grey,
                   ),
                 );
               }),

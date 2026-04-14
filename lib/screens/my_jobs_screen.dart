@@ -82,7 +82,10 @@ class MyJobsScreen extends StatelessWidget {
     return Column(
       children: jobs.map((job) {
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            /// 🔥 JOB CARD + BADGE
             Stack(
               children: [
                 JobCard(
@@ -98,7 +101,6 @@ class MyJobsScreen extends StatelessWidget {
                   },
                 ),
 
-                // 🔥 RESERVED BADGE
                 if (job.status == JobStatus.reserved)
                   Positioned(
                     top: 10,
@@ -123,18 +125,18 @@ class MyJobsScreen extends StatelessWidget {
               ],
             ),
 
-            // 🔥 TIMER (bruk reservedAt i stedet for reservedUntil)
+            /// 🔥 TIMER (FULL FIX)
             if (job.status == JobStatus.reserved &&
-                job.reservedAt != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: ReservedTimer(job: job),
+                job.reservedUntil != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ReservedTimer(
+                  jobId: job.id,
+                  reservedUntil: job.reservedUntil!,
                 ),
               ),
 
-            // 🔥 ACTIONS
+            /// 🔥 ACTION BUTTONS
             Row(
               children: [
                 if (allowComplete &&
@@ -159,7 +161,6 @@ class MyJobsScreen extends StatelessWidget {
                     ),
                   ),
 
-                // 🔥 FIX: reopen finnes ikke → bruk addJob-lignende flow
                 if (allowReopen &&
                     job.status == JobStatus.completed)
                   Expanded(

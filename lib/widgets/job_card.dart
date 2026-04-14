@@ -26,15 +26,15 @@ class JobCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: EdgeInsets.only(bottom: compact ? 0 : 14),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24), // 🔥 mer rounded
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 14,
-              offset: const Offset(0, 8),
+              color: Colors.black.withOpacity(0.04), // 🔥 mykere shadow
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
@@ -43,19 +43,29 @@ class JobCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 🔥 BILDE / ICON
                 Container(
-                  width: compact ? 48 : 54,
-                  height: compact ? 48 : 54,
+                  width: compact ? 50 : 60,
+                  height: compact ? 50 : 60,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2356E8).withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF4F7BFF).withOpacity(0.15),
+                        const Color(0xFF18B7A6).withOpacity(0.15),
+                      ],
+                    ),
                   ),
                   child: const Icon(
                     Icons.work_outline_rounded,
                     color: Color(0xFF2356E8),
+                    size: 26,
                   ),
                 ),
+
                 const SizedBox(width: 12),
+
+                // 🔥 TEXT
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,15 +92,22 @@ class JobCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
+
                       Row(
                         children: [
+                          // 🔥 CATEGORY CHIP (bedre design)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2356E8).withOpacity(0.08),
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFF4F7BFF).withOpacity(0.15),
+                                  const Color(0xFF18B7A6).withOpacity(0.15),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
@@ -102,16 +119,28 @@ class JobCard extends StatelessWidget {
                               ),
                             ),
                           ),
+
                           const SizedBox(width: 8),
+
+                          // 🔥 DISTANCE + TIME
                           Expanded(
-                            child: Text(
-                              distanceText,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6E7A90),
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on,
+                                    size: 14, color: Color(0xFF6E7A90)),
+                                const SizedBox(width: 3),
+                                Expanded(
+                                  child: Text(
+                                    distanceText,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6E7A90),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -119,7 +148,10 @@ class JobCard extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 const SizedBox(width: 10),
+
+                // 🔥 PRICE + BUTTON
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -132,14 +164,26 @@ class JobCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
+
+                    // 🔥 PREMIUM BUTTON
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 12,
+                        vertical: 7,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2356E8),
-                        borderRadius: BorderRadius.circular(12),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF4F7BFF), Color(0xFF18B7A6)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF4F7BFF).withOpacity(0.25),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Text(
                         job.status == JobStatus.open ? "Ta jobb" : "Se",
@@ -154,8 +198,11 @@ class JobCard extends StatelessWidget {
                 ),
               ],
             ),
+
             if (!compact) ...[
               const SizedBox(height: 12),
+
+              // 🔥 OWNER ROW (beholdt, men forbedret spacing)
               Row(
                 children: [
                   const CircleAvatar(

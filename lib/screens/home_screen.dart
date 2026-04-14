@@ -7,6 +7,9 @@ import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
 import 'job_detail_screen.dart';
 
+// 🚀 NY IMPORT
+import '../services/supabase_service.dart';
+
 class HomeScreen extends StatefulWidget {
   final Function(int)? onNavigate;
 
@@ -21,6 +24,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Job? _selectedJob;
   Set<Marker> _markers = {};
 
+  // 🚀 NY
+  final supabase = SupabaseService();
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -34,6 +40,19 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _header(context, jobs),
+
+            // 🚀 🔥 TEST SUPABASE KNAPP (NY – kan fjernes senere)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ElevatedButton(
+                onPressed: () async {
+                  await supabase.createTestJob();
+                  print("TEST JOBB SENDT");
+                },
+                child: const Text("TEST SUPABASE"),
+              ),
+            ),
+
             const SizedBox(height: 10),
             _toggle(),
             const SizedBox(height: 10),
@@ -232,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 170, // 🔥 økt for knapp
+          height: 170,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: trending.length,
@@ -269,12 +288,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const Spacer(),
-
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text("${job.price} kr"),
-
                           ElevatedButton(
                             onPressed: () {
                               context.read<AppState>().reserveJob(job.id);

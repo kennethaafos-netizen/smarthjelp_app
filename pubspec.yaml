@@ -28,11 +28,22 @@ dependencies:
 
   # IMAGE
   image_picker: ^1.0.7
-  flutter_local_notifications: ^21.0.0
+
+  # STORAGE / PREFS
   shared_preferences: ^2.5.5
+
+  # LOCATION
   geolocator: ^14.0.2
+
+  # NOTIFICATIONS (fremtid)
+  flutter_local_notifications: ^21.0.0
   firebase_core: ^4.6.0
   firebase_messaging: ^16.1.3
+
+  # 🔥 NYTT – EXPORT SYSTEM
+  excel: ^4.0.6
+  share_plus: ^10.1.2
+  supabase_flutter: ^2.12.2
 
 dev_dependencies:
   flutter_test:
