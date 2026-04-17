@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +24,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final PageController _controller = PageController();
+
+  // Brukes til deterministisk-nok jitter på koordinater slik at flere jobber
+  // i samme by ikke legger seg eksakt oppå hverandre på kartet.
+  final Random _random = Random();
 
   String? category;
   String? location;
@@ -196,8 +202,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   top: 0,
                   bottom: 0,
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios,
-                        color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white,
+                    ),
                     onPressed: currentIndex < images.length - 1
                         ? () => _controller.nextPage(
                               duration: const Duration(milliseconds: 200),
@@ -211,7 +219,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   right: 10,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     color: Colors.black54,
                     child: Text(
                       '${currentIndex + 1}/${images.length}',
@@ -260,7 +270,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (category == null || location == null) return;
+    if (category == null || location == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Velg kategori og sted')),
+      );
+      return;
+    }
 
     final parsedPrice = int.tryParse(_price.text.trim());
     if (parsedPrice == null || parsedPrice <= 0) {
@@ -276,6 +291,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       final appState = context.read<AppState>();
       final supabase = SupabaseService();
 
+      // 1) Last opp bilder til storage først. Hvis en enkelt opplastning
+      // feiler, logger vi og går videre – vi blokkerer ikke publisering.
       final urls = <String>[];
 
       for (final img in images) {
@@ -293,18 +310,43 @@ class _PostJobScreenState extends State<PostJobScreen> {
         }
       }
 
-      await appState.addJob(
+      // 2) Beregn lat/lng med jitter slik at flere oppdrag i samme by ikke
+      // legger seg eksakt oppå hverandre på kartet. Ca ±0.0025° ≈ ±275 m.
+      final baseLat = _latForLocation(location!);
+      final baseLng = _lngForLocation(location!);
+      final jitteredLat = baseLat + _jitterDegrees();
+      final jitteredLng = baseLng + _jitterDegrees();
+
+      // 3) Lag jobb i Supabase via AppState. addJob returnerer true/false
+      // slik at vi kan gi brukeren korrekt tilbakemelding.
+      final ok = await appState.addJob(
         title: _title.text.trim(),
         description: _desc.text.trim(),
         price: parsedPrice,
         locationName: location!,
-        lat: _latForLocation(location!),
-        lng: _lngForLocation(location!),
+        lat: jitteredLat,
+        lng: jitteredLng,
         category: category!,
         imageUrl: urls.isNotEmpty ? urls.first : null,
         imageUrls: urls,
       );
 
+      if (!mounted) return;
+
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Kunne ikke lagre oppdraget på server. Prøv igjen.',
+            ),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      // 4) Synk liste fra server for å få kanonisk state (inkl. server-id og
+      // ev. defaults satt av DB).
       await appState.reloadJobs();
 
       if (!mounted) return;
@@ -323,8 +365,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
         location = null;
         currentIndex = 0;
       });
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Submit error: $e');
+      debugPrintStack(stackTrace: stack);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Noe gikk galt under publisering')),
@@ -335,6 +378,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
     if (mounted) {
       setState(() => _isSubmitting = false);
     }
+  }
+
+  /// Tilfeldig forskyvning i ca ±0.0025° (~275 m). Brukes for å hindre at
+  /// markører i samme by havner eksakt oppå hverandre på kartet.
+  double _jitterDegrees() {
+    const spread = 0.005; // total bredde ≈ 550 m
+    return (_random.nextDouble() - 0.5) * spread;
   }
 
   Widget _field(
@@ -348,8 +398,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
         controller: c,
-        keyboardType:
-            number ? TextInputType.number : TextInputType.text,
+        keyboardType: number ? TextInputType.number : TextInputType.text,
         maxLines: maxLines,
         onChanged: onChanged,
         validator: (v) =>
@@ -370,12 +419,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
       child: DropdownButtonFormField<String>(
         value: value,
         items: list
-            .map((e) =>
-                DropdownMenuItem(value: e, child: Text(e)))
+            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
             .toList(),
         onChanged: onChanged,
-        validator: (v) =>
-            v == null ? '$label må velges' : null,
+        validator: (v) => v == null ? '$label må velges' : null,
         decoration: InputDecoration(labelText: label),
       ),
     );

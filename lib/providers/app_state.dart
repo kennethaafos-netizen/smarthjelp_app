@@ -59,6 +59,13 @@ class AppState extends ChangeNotifier {
     _bootstrap();
   }
 
+  // 🔥 FASTE UUID-IDer FOR TESTBRUKERE
+  // Må matche Supabase uuid-format for å unngå "invalid input syntax for type uuid".
+  static const String kAndersUserId =
+      '00000000-0000-0000-0000-000000000001';
+  static const String kKennethUserId =
+      '00000000-0000-0000-0000-000000000002';
+
   final Uuid _uuid = const Uuid();
   final SupabaseService _supabaseService;
 
@@ -273,7 +280,13 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> addJob({
+  /// Oppretter jobb. Returnerer true hvis Supabase-lagring lyktes.
+  ///
+  /// Viktig: vi gjør en optimistisk lokal insert slik at UI oppdateres
+  /// umiddelbart. Hvis Supabase feiler, ruller vi tilbake for å unngå:
+  ///   1. fantomjobber som ikke finnes i backend
+  ///   2. job_images-inserts mot et job_id som ikke finnes (FK-feil)
+  Future<bool> addJob({
     required String title,
     required String description,
     required int price,
@@ -300,6 +313,7 @@ class AppState extends ChangeNotifier {
       viewCount: 0,
     );
 
+    // Optimistisk lokal insert
     _jobs.insert(0, job);
 
     if (imageUrls != null && imageUrls.isNotEmpty) {
@@ -313,18 +327,35 @@ class AppState extends ChangeNotifier {
     try {
       final saved = await _supabaseService.createJob(job);
 
-      if (imageUrls != null && imageUrls.isNotEmpty) {
-        await _supabaseService.addJobImages(jobId: job.id, urls: imageUrls);
+      if (saved == null) {
+        // Rull tilbake hvis backend ikke aksepterte jobben
+        _jobs.removeWhere((j) => j.id == job.id);
+        _jobImages.remove(job.id);
+        notifyListeners();
+        return false;
       }
 
-      if (saved != null) {
-        _replaceJobLocally(saved);
+      _replaceJobLocally(saved);
+
+      // Bilder skal bare lagres når jobben faktisk er opprettet i Supabase
+      if (imageUrls != null && imageUrls.isNotEmpty) {
+        await _supabaseService.addJobImages(
+          jobId: saved.id,
+          urls: imageUrls,
+        );
+        // Speil ev. oppdaterte URLs lokalt (om serveren har endret noe)
+        _jobImages[saved.id] = List<String>.from(imageUrls);
       }
+
+      notifyListeners();
+      return true;
     } catch (e) {
       debugPrint('addJob error: $e');
+      _jobs.removeWhere((j) => j.id == job.id);
+      _jobImages.remove(job.id);
+      notifyListeners();
+      return false;
     }
-
-    notifyListeners();
   }
 
   Future<bool> updateOwnJob({
@@ -372,6 +403,7 @@ class AppState extends ChangeNotifier {
     final job = getJobById(jobId);
     if (job == null) return false;
     if (job.createdByUserId != _currentUser.id) return false;
+    // Eier kan slette så lenge jobben er åpen
     if (job.status != JobStatus.open) return false;
 
     final previousJobs = [..._jobs];
@@ -540,6 +572,10 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Håndterer cancel med riktig flyt per status:
+  ///   open        → bare eier kan slette (via deleteOwnJob), ellers ingen handling
+  ///   reserved    → frigis umiddelbart (goes back to open)
+  ///   inProgress  → request/approve-flyt, begge kan be, motpart må godkjenne
   Future<void> cancelJob(String id) async {
     final job = getJobById(id);
     if (job == null) return;
@@ -548,7 +584,10 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
+    // open: eier bruker deleteOwnJob i UI for å fjerne. Vi markerer ev. med
+    // cancelRequestedByUserId for sporing, men endrer ikke status.
     if (job.status == JobStatus.open) {
+      if (!isOwner) return;
       final updated = job.copyWith(
         status: JobStatus.open,
         cancelRequestedByUserId: _currentUser.id,
@@ -567,12 +606,15 @@ class AppState extends ChangeNotifier {
     }
 
     if (job.status == JobStatus.inProgress) {
+      // Hvis motparten allerede har bedt om avbrytelse, tolk dette trykket
+      // som godkjenning.
       if (job.cancelRequestedByUserId != null &&
           job.cancelRequestedByUserId != _currentUser.id) {
         await approveCancel(id);
         return;
       }
 
+      // Ellers: be om cancel. Motparten må godkjenne.
       final updated = job.copyWith(
         cancelRequestedByUserId: _currentUser.id,
       );
@@ -580,9 +622,49 @@ class AppState extends ChangeNotifier {
       await _saveJobUpdate(
         updated,
         systemMessage:
-            '${_currentUser.firstName} ba om å avbryte oppdraget.',
+            '${_currentUser.firstName} ba om å avbryte oppdraget. Venter på godkjenning fra motpart.',
       );
     }
+  }
+
+  /// Trekk tilbake en cancel-forespørsel man selv har sendt.
+  Future<void> withdrawCancelRequest(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.cancelRequestedByUserId == null) return;
+    if (job.cancelRequestedByUserId != _currentUser.id) return;
+
+    final updated = job.copyWith(
+      cancelRequestedByUserId: null,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage:
+          '${_currentUser.firstName} trakk tilbake forespørselen om avbrytelse.',
+    );
+  }
+
+  /// Motparten avslår en cancel-forespørsel uten å godkjenne den.
+  Future<void> rejectCancel(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.cancelRequestedByUserId == null) return;
+
+    final canReject = job.createdByUserId == _currentUser.id ||
+        job.acceptedByUserId == _currentUser.id;
+    if (!canReject) return;
+    if (job.cancelRequestedByUserId == _currentUser.id) return;
+
+    final updated = job.copyWith(
+      cancelRequestedByUserId: null,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage:
+          '${_currentUser.firstName} avslo forespørselen om avbrytelse. Oppdraget fortsetter.',
+    );
   }
 
   Future<void> approveCancel(String id) async {
@@ -788,7 +870,7 @@ class AppState extends ChangeNotifier {
 
   void _seedUsers() {
     final owner = UserProfile(
-      id: '1',
+      id: kAndersUserId,
       firstName: 'Anders',
       email: '',
       phone: '',
@@ -800,7 +882,7 @@ class AppState extends ChangeNotifier {
     );
 
     final worker = UserProfile(
-      id: '2',
+      id: kKennethUserId,
       firstName: 'Kenneth',
       email: '',
       phone: '',
@@ -819,7 +901,7 @@ class AppState extends ChangeNotifier {
   List<Job> _buildSeedJobs() {
     return [
       Job(
-        id: '1',
+        id: _uuid.v4(),
         title: 'Bære ved',
         description: 'Trenger hjelp med å bære ved inn i boden.',
         price: 300,
@@ -827,7 +909,7 @@ class AppState extends ChangeNotifier {
         locationName: 'Skien',
         lat: 59.2096,
         lng: 9.6089,
-        createdByUserId: '1',
+        createdByUserId: kAndersUserId,
         status: JobStatus.open,
         createdAt: DateTime.now(),
         viewCount: 0,

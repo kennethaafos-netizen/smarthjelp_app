@@ -54,7 +54,10 @@ class _JobsScreenState extends State<JobsScreen> {
         title: const Text('Oppdrag'),
         actions: [
           IconButton(
-            onPressed: () => appState.reloadJobs(),
+            tooltip: 'Oppdater liste',
+            onPressed: appState.isLoadingJobs
+                ? null
+                : () => appState.reloadJobs(),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -66,6 +69,8 @@ class _JobsScreenState extends State<JobsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (appState.jobsError != null)
+                    _errorBanner(appState.jobsError!),
                   _topControls(context),
                   const SizedBox(height: 16),
                   _sectionTitle('📍 Alle oppdrag'),
@@ -85,13 +90,15 @@ class _JobsScreenState extends State<JobsScreen> {
                               onTake: (job.status == JobStatus.open &&
                                       job.createdByUserId != currentUser.id)
                                   ? () async {
-                                      final ok =
-                                          await context.read<AppState>().reserveJob(job.id);
+                                      final ok = await context
+                                          .read<AppState>()
+                                          .reserveJob(job.id);
 
                                       if (!context.mounted) return;
 
                                       if (!ok) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
                                           const SnackBar(
                                             content: Text(
                                               'Kunne ikke reservere oppdraget.',
@@ -104,7 +111,8 @@ class _JobsScreenState extends State<JobsScreen> {
                                       final refreshed = context
                                           .read<AppState>()
                                           .getJobById(job.id);
-                                      if (refreshed != null && context.mounted) {
+                                      if (refreshed != null &&
+                                          context.mounted) {
                                         _openJob(context, refreshed);
                                       }
                                     }
@@ -126,6 +134,30 @@ class _JobsScreenState extends State<JobsScreen> {
                                   ),
                                   child: const Text(
                                     'Reservert',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (job.cancelRequestedByUserId != null &&
+                                job.status == JobStatus.inProgress)
+                              Positioned(
+                                left: 12,
+                                top: 12,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade600,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'Avbrytelse bedt om',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w700,
@@ -331,6 +363,33 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
+  Widget _errorBanner(String text) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openJob(BuildContext context, Job job) {
     context.read<AppState>().incrementView(job.id);
     Navigator.push(
@@ -355,6 +414,7 @@ class _JobsScreenState extends State<JobsScreen> {
                 child: const Text('Avbryt'),
               ),
               FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Slett'),
               ),
@@ -365,7 +425,8 @@ class _JobsScreenState extends State<JobsScreen> {
 
     if (!confirmed || !context.mounted) return;
 
-    final ok = await context.read<AppState>().deleteOwnJob(job.id);
+    final appState = context.read<AppState>();
+    final ok = await appState.deleteOwnJob(job.id);
 
     if (!context.mounted) return;
 
@@ -376,6 +437,11 @@ class _JobsScreenState extends State<JobsScreen> {
         ),
       ),
     );
+
+    // Hent kanonisk state fra server etter delete
+    if (ok) {
+      await appState.reloadJobs();
+    }
   }
 
   Future<void> _showEditDialog(BuildContext context, Job job) async {
@@ -386,8 +452,9 @@ class _JobsScreenState extends State<JobsScreen> {
     final locationCtrl = TextEditingController(text: job.locationName);
     final formKey = GlobalKey<FormState>();
 
-    double lat = job.lat;
-    double lng = job.lng;
+    // Lat/lng endres ikke i dialogen – vi beholder eksisterende verdier.
+    final double lat = job.lat;
+    final double lng = job.lng;
 
     final saved = await showDialog<bool>(
           context: context,
@@ -402,8 +469,9 @@ class _JobsScreenState extends State<JobsScreen> {
                     TextFormField(
                       controller: titleCtrl,
                       decoration: const InputDecoration(labelText: 'Tittel'),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Skriv tittel' : null,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Skriv tittel'
+                          : null,
                     ),
                     TextFormField(
                       controller: descCtrl,
@@ -436,8 +504,9 @@ class _JobsScreenState extends State<JobsScreen> {
                     TextFormField(
                       controller: locationCtrl,
                       decoration: const InputDecoration(labelText: 'Sted'),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Skriv sted' : null,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Skriv sted'
+                          : null,
                     ),
                   ],
                 ),
@@ -462,16 +531,17 @@ class _JobsScreenState extends State<JobsScreen> {
 
     if (!saved || !context.mounted) return;
 
-    final ok = await context.read<AppState>().updateOwnJob(
-          jobId: job.id,
-          title: titleCtrl.text.trim(),
-          description: descCtrl.text.trim(),
-          price: int.parse(priceCtrl.text.trim()),
-          category: categoryCtrl.text.trim(),
-          locationName: locationCtrl.text.trim(),
-          lat: lat,
-          lng: lng,
-        );
+    final appState = context.read<AppState>();
+    final ok = await appState.updateOwnJob(
+      jobId: job.id,
+      title: titleCtrl.text.trim(),
+      description: descCtrl.text.trim(),
+      price: int.parse(priceCtrl.text.trim()),
+      category: categoryCtrl.text.trim(),
+      locationName: locationCtrl.text.trim(),
+      lat: lat,
+      lng: lng,
+    );
 
     if (!context.mounted) return;
 
@@ -482,5 +552,9 @@ class _JobsScreenState extends State<JobsScreen> {
         ),
       ),
     );
+
+    if (ok) {
+      await appState.reloadJobs();
+    }
   }
 }
