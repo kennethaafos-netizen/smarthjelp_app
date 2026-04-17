@@ -4,349 +4,270 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
+import 'image_viewer_screen.dart';
 
-class JobDetailScreen extends StatelessWidget {
+class JobDetailScreen extends StatefulWidget {
   final Job job;
 
   const JobDetailScreen({super.key, required this.job});
 
   @override
+  State<JobDetailScreen> createState() => _JobDetailScreenState();
+}
+
+class _JobDetailScreenState extends State<JobDetailScreen> {
+  bool _isLoading = false;
+
+  @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final currentJob = appState.jobs.firstWhere((j) => j.id == job.id);
+    final job = appState.getJobById(widget.job.id) ?? widget.job;
 
-    final isOwner = currentJob.createdByUserId == appState.currentUser.id;
-    final isWorker = currentJob.acceptedByUserId == appState.currentUser.id;
-    final cancelRequestedByOther =
-        currentJob.cancelRequestedByUserId != null &&
-            currentJob.cancelRequestedByUserId != appState.currentUser.id;
+    final currentUser = appState.currentUser;
+    final isOwner = job.createdByUserId == currentUser.id;
+    final isWorker = job.acceptedByUserId == currentUser.id;
+
+    final images = appState.getImages(job.id);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FC),
-      body: SafeArea(
+      appBar: AppBar(title: Text(job.title)),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(job.title,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text(job.description),
+                const SizedBox(height: 20),
+
+                // -------- BILDER --------
+                if (images.isNotEmpty)
+                  SizedBox(
+                    height: 200,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: images.length,
+                      itemBuilder: (_, i) {
+                        final url = images[i];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ImageViewerScreen(
+                                  imageUrls: images,
+                                  initialIndex: i,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Hero(
+                              tag: url,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(url),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                const SizedBox(height: 20),
+
+                _priceSection(job, isOwner),
+
+                const SizedBox(height: 20),
+                Text('Status: ${job.status.name}'),
+              ],
+            ),
+          ),
+
+          _actionButtons(job, isOwner, isWorker),
+        ],
+      ),
+    );
+  }
+
+  // ---------------- PRIS ----------------
+
+  Widget _priceSection(Job job, bool isOwner) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Betaling',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        if (isOwner) ...[
+          Text('Oppdrag: ${job.price} kr'),
+          Text('Plattformavgift: ${job.platformFee.toStringAsFixed(0)} kr'),
+          Text('Totalt: ${job.totalPrice.toStringAsFixed(0)} kr'),
+        ] else ...[
+          Text('Du tjener: ${job.payout.toStringAsFixed(0)} kr'),
+        ],
+      ],
+    );
+  }
+
+  // ---------------- ACTIONS ----------------
+
+  Widget _actionButtons(Job job, bool isOwner, bool isWorker) {
+    final appState = context.read<AppState>();
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _header(context, currentJob),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _infoCard(currentJob),
-                  const SizedBox(height: 16),
-                  _paymentCard(currentJob, isOwner),
-                  const SizedBox(height: 16),
-                ],
+            if (_isLoading) const CircularProgressIndicator(),
+
+            // -------- TA JOBB --------
+            if (!_isLoading && job.status == JobStatus.open && !isOwner)
+              _mainButton('Ta jobb', () async {
+                await _runAction(() async {
+                  final ok = await appState.reserveJob(job.id);
+                  if (!ok) return;
+                  _reload(job.id);
+                });
+              }),
+
+            // -------- AVBRYT (NY LOGIKK) --------
+            if (!_isLoading &&
+                (isOwner || isWorker) &&
+                job.status != JobStatus.completed)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _confirmCancel(job.id),
+                  child: const Text('Avbryt oppdrag'),
+                ),
               ),
-            ),
-            _bottomActions(
-              context,
-              currentJob,
-              isOwner,
-              isWorker,
-              cancelRequestedByOther,
-            ),
+
+            // -------- START --------
+            if (!_isLoading &&
+                job.status == JobStatus.reserved &&
+                isWorker)
+              _mainButton('Start jobb', () async {
+                await _runAction(() async {
+                  await appState.startJob(job.id);
+                  _reload(job.id);
+                });
+              }),
+
+            // -------- FULLFØR --------
+            if (!_isLoading &&
+                job.status == JobStatus.inProgress &&
+                isWorker &&
+                !job.isCompletedByWorker)
+              _mainButton('Fullfør', () async {
+                await _runAction(() async {
+                  await appState.completeJobByWorker(job.id);
+                  _reload(job.id);
+                });
+              }),
+
+            // -------- GODKJENN --------
+            if (!_isLoading &&
+                job.status == JobStatus.inProgress &&
+                isOwner &&
+                job.isCompletedByWorker)
+              _mainButton('Godkjenn og betal ut', () async {
+                await _runAction(() async {
+                  await appState.approveAndReleasePayment(job.id);
+                  _reload(job.id);
+                });
+              }),
+
+            const SizedBox(height: 10),
+
+            // -------- CHAT --------
+            if (job.acceptedByUserId != null)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: const Text('Åpne chat'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(job: job),
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _header(BuildContext context, Job job) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back),
-          ),
-          Expanded(
-            child: Text(
-              job.title,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          Text(
-            "${job.price} kr",
-            style: const TextStyle(
-              color: Color(0xFF18B7A6),
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ---------------- CONFIRM DIALOG ----------------
 
-  Widget _infoCard(Job job) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            job.category,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(job.description),
-          const SizedBox(height: 10),
-          Text(job.locationName, style: const TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
-
-  Widget _paymentCard(Job job, bool isOwner) {
-    final statusText = !job.isPaymentReserved
-        ? "Venter på start"
-        : !job.isCompletedByWorker
-            ? "Jobb pågår"
-            : !job.isApprovedByOwner
-                ? "Venter på godkjenning"
-                : "Fullført";
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Betaling",
-              style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          if (isOwner) ...[
-            Text("Du betaler: ${job.totalPrice.toStringAsFixed(0)} kr"),
-            Text("Gebyr: ${job.fee.toStringAsFixed(0)} kr"),
-            Text("Utbetaling: ${job.payout.toStringAsFixed(0)} kr"),
-          ] else ...[
-            Text("Du får: ${job.payout.toStringAsFixed(0)} kr"),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            statusText,
-            style: TextStyle(
-              color: job.isApprovedByOwner ? Colors.green : Colors.orange,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bottomActions(
-    BuildContext context,
-    Job job,
-    bool isOwner,
-    bool isWorker,
-    bool cancelRequestedByOther,
-  ) {
+  Future<void> _confirmCancel(String jobId) async {
     final appState = context.read<AppState>();
 
-    // 🔥 KEY FIX
-    final showChat = job.acceptedByUserId != null;
-
-    Widget chatButton = Expanded(
-      child: OutlinedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(job: job),
-            ),
-          );
-        },
-        icon: const Icon(Icons.chat_bubble_outline),
-        label: const Text("Chat"),
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Avbryt oppdrag'),
+        content: const Text('Er du sikker på at du vil avbryte?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Nei'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ja'),
+          ),
+        ],
       ),
     );
 
-    Widget mainWithChat(String text, VoidCallback onTap) {
-      if (!showChat) {
-        return _mainButton(text, onTap);
-      }
+    if (confirm == true) {
+      await _runAction(() async {
+        await appState.cancelJob(jobId);
+        _reload(jobId);
+      });
+    }
+  }
 
-      return Row(
-        children: [
-          chatButton,
-          const SizedBox(width: 10),
-          Expanded(child: _mainButton(text, onTap)),
-        ],
+  // ---------------- HELPERS ----------------
+
+  Future<void> _runAction(Future<void> Function() fn) async {
+    setState(() => _isLoading = true);
+    await fn();
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  void _reload(String id) {
+    final updated = context.read<AppState>().getJobById(id);
+    if (updated != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => JobDetailScreen(job: updated),
+        ),
       );
     }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-
-          // 🔵 OPEN
-          if (job.status == JobStatus.open)
-            _mainButton(
-              "Ta jobb",
-              () => appState.reserveJob(job.id),
-            ),
-
-          // 🟠 RESERVED
-          if (job.status == JobStatus.reserved && isWorker) ...[
-            mainWithChat(
-              "Start jobb",
-              () => appState.startJob(job.id),
-            ),
-            const SizedBox(height: 10),
-            _dangerButton(
-              "Avbryt",
-              () => _cancelDialog(context, job),
-            ),
-          ],
-
-          // 🔵 IN PROGRESS
-          if (job.status == JobStatus.inProgress &&
-              isWorker &&
-              !job.isCompletedByWorker) ...[
-            mainWithChat(
-              "Fullfør",
-              () => appState.completeJobByWorker(job.id),
-            ),
-            const SizedBox(height: 10),
-            _dangerButton(
-              cancelRequestedByOther
-                  ? "Godkjenn avbrytelse"
-                  : "Be om avbrytelse",
-              () {
-                if (cancelRequestedByOther) {
-                  appState.approveCancel(job.id);
-                } else {
-                  _cancelDialog(context, job);
-                }
-              },
-            ),
-          ],
-
-          // 🟢 OWNER
-          if (job.status == JobStatus.inProgress &&
-              job.isCompletedByWorker &&
-              isOwner) ...[
-            mainWithChat(
-              "Godkjenn betaling",
-              () async {
-                appState.approveAndReleasePayment(job.id);
-                await _showRatingPopup(context, job.acceptedByUserId);
-              },
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Widget _mainButton(String text, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
-      child: FilledButton(onPressed: onTap, child: Text(text)),
-    );
-  }
-
-  Widget _dangerButton(String text, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
+      child: ElevatedButton(
         onPressed: onTap,
-        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
         child: Text(text),
-      ),
-    );
-  }
-
-  void _cancelDialog(BuildContext context, Job job) {
-    final appState = context.read<AppState>();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Avbryt oppdrag"),
-        content: const Text("Er du sikker?"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Nei")),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              appState.cancelJob(job.id);
-            },
-            child: const Text("Ja"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showRatingPopup(
-      BuildContext context, String? userId) async {
-    if (userId == null) return;
-
-    double rating = 5;
-
-    await showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (context, setLocalState) {
-          return AlertDialog(
-            title: const Text("Gi vurdering"),
-            content: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(5, (index) {
-                final star = index + 1;
-                return IconButton(
-                  onPressed: () {
-                    setLocalState(() => rating = star.toDouble());
-                  },
-                  icon: Icon(
-                    Icons.star,
-                    color: star <= rating ? Colors.orange : Colors.grey,
-                  ),
-                );
-              }),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Senere"),
-              ),
-              FilledButton(
-                onPressed: () {
-                  context.read<AppState>().rateUser(
-                        userId: userId,
-                        newRating: rating,
-                      );
-                  Navigator.pop(context);
-                },
-                child: const Text("Send"),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

@@ -32,10 +32,8 @@ class MyJobsScreen extends StatelessWidget {
             allowComplete: true,
             allowCancelReservation: true,
           ),
-
           _sectionTitle("✅ Fullført (jeg gjorde)"),
           _jobList(context, completedTaken, appState),
-
           _sectionTitle("📤 Mine oppdrag"),
           _jobList(
             context,
@@ -43,7 +41,6 @@ class MyJobsScreen extends StatelessWidget {
             appState,
             allowReopen: true,
           ),
-
           _sectionTitle("🏁 Fullført (mine)"),
           _jobList(context, completedPosted, appState),
         ],
@@ -84,8 +81,6 @@ class MyJobsScreen extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            /// 🔥 JOB CARD + BADGE
             Stack(
               children: [
                 JobCard(
@@ -100,7 +95,6 @@ class MyJobsScreen extends StatelessWidget {
                     );
                   },
                 ),
-
                 if (job.status == JobStatus.reserved)
                   Positioned(
                     top: 10,
@@ -124,8 +118,6 @@ class MyJobsScreen extends StatelessWidget {
                   ),
               ],
             ),
-
-            /// 🔥 TIMER (FULL FIX)
             if (job.status == JobStatus.reserved &&
                 job.reservedUntil != null)
               Padding(
@@ -135,12 +127,11 @@ class MyJobsScreen extends StatelessWidget {
                   reservedUntil: job.reservedUntil!,
                 ),
               ),
-
-            /// 🔥 ACTION BUTTONS
             Row(
               children: [
                 if (allowComplete &&
-                    job.status == JobStatus.inProgress)
+                    job.status == JobStatus.inProgress &&
+                    !job.isCompletedByWorker)
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
@@ -149,7 +140,6 @@ class MyJobsScreen extends StatelessWidget {
                       child: const Text("Fullfør"),
                     ),
                   ),
-
                 if (allowCancelReservation &&
                     job.status == JobStatus.reserved)
                   Expanded(
@@ -160,7 +150,6 @@ class MyJobsScreen extends StatelessWidget {
                       child: const Text("Avbryt"),
                     ),
                   ),
-
                 if (allowReopen &&
                     job.status == JobStatus.completed)
                   Expanded(
@@ -182,7 +171,6 @@ class MyJobsScreen extends StatelessWidget {
                   ),
               ],
             ),
-
             const SizedBox(height: 12),
           ],
         );

@@ -20,6 +20,12 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatMessage? _replyTo;
 
   @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final messages = appState.getMessagesForJob(widget.job.id);
@@ -40,14 +46,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 final msg = messages[messages.length - 1 - i];
                 final isMe = msg.senderId == currentUser.id;
                 final sender =
-                    appState.getUserById(msg.senderId)?.firstName ?? "Bruker";
+                    appState.getUserById(msg.senderId)?.firstName ?? 'Bruker';
 
                 return GestureDetector(
                   onLongPress: () {
-                    setState(() => _replyTo = msg);
+                    if (msg.senderId != 'system') {
+                      setState(() => _replyTo = msg);
+                    }
                   },
                   onTap: () {
-                    appState.toggleReaction(msg.id, "❤️");
+                    if (msg.senderId != 'system') {
+                      appState.toggleReaction(msg.id, '❤️');
+                    }
                   },
                   child: _buildBubble(msg, isMe, sender),
                 );
@@ -62,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      "Svarer på: ${_replyTo!.text}",
+                      'Svarer på: ${_replyTo!.text}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -70,7 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => setState(() => _replyTo = null),
-                  )
+                  ),
                 ],
               ),
             ),
@@ -114,7 +124,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
-              "$name • $time",
+              '$name • $time',
               style: const TextStyle(
                 fontSize: 11,
                 color: Colors.grey,
@@ -133,13 +143,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
                   blurRadius: 6,
-                )
+                ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (msg.replyToText != null)
+                if (msg.replyToText != null && msg.replyToText!.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.all(6),
                     margin: const EdgeInsets.only(bottom: 6),
@@ -149,10 +159,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     child: Text(
                       msg.replyToText!,
-                      style: const TextStyle(fontSize: 11),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isMe ? Colors.white70 : Colors.black87,
+                      ),
                     ),
                   ),
-                if (msg.imageUrl != null)
+                if (msg.imageUrl != null && msg.imageUrl!.startsWith('http')) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: Image.network(
@@ -160,8 +173,19 @@ class _ChatScreenState extends State<ChatScreen> {
                       height: 140,
                       width: double.infinity,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return Container(
+                          height: 140,
+                          width: double.infinity,
+                          color: Colors.grey.shade200,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image),
+                        );
+                      },
                     ),
                   ),
+                  if (msg.text.isNotEmpty) const SizedBox(height: 8),
+                ],
                 if (msg.text.isNotEmpty)
                   Text(
                     msg.text,
@@ -191,8 +215,10 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: TextField(
                 controller: _ctrl,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _handleSend(),
                 decoration: InputDecoration(
-                  hintText: "Skriv melding...",
+                  hintText: 'Skriv melding...',
                   filled: true,
                   fillColor: Colors.grey.shade100,
                   border: OutlineInputBorder(
@@ -204,19 +230,31 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.send),
-              onPressed: () {
-                context.read<AppState>().sendMessage(
-                      widget.job.id,
-                      _ctrl.text,
-                      replyTo: _replyTo,
-                    );
-                _ctrl.clear();
-                setState(() => _replyTo = null);
-              },
-            )
+              onPressed: _handleSend,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  void _handleSend() {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+
+    final replyTo = _replyTo;
+
+    context.read<AppState>().sendMessage(
+          jobId: widget.job.id,
+          text: text,
+          replyToMessageId: replyTo?.id,
+          replyToText: replyTo?.text,
+        );
+
+    _ctrl.clear();
+
+    if (mounted) {
+      setState(() => _replyTo = null);
+    }
   }
 }

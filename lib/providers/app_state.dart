@@ -4,11 +4,9 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
+import '../services/supabase_service.dart';
 
-enum TaxTransactionType {
-  income,
-  expense,
-}
+enum TaxTransactionType { income, expense }
 
 class TaxReportEntry {
   final String id;
@@ -31,14 +29,8 @@ class TaxReportEntry {
     required this.sourceJobId,
   });
 
-  String get typeLabel {
-    switch (type) {
-      case TaxTransactionType.income:
-        return 'Inntekt';
-      case TaxTransactionType.expense:
-        return 'Kostnad';
-    }
-  }
+  String get typeLabel =>
+      type == TaxTransactionType.income ? 'Inntekt' : 'Kostnad';
 
   bool get isIncome => type == TaxTransactionType.income;
 }
@@ -58,169 +50,220 @@ class TaxReportSummary {
 
   double get net => totalIncome - totalExpenses;
   int get transactionCount => entries.length;
-
-  List<TaxReportEntry> get incomeEntries =>
-      entries.where((e) => e.type == TaxTransactionType.income).toList();
-
-  List<TaxReportEntry> get expenseEntries =>
-      entries.where((e) => e.type == TaxTransactionType.expense).toList();
 }
 
 class AppState extends ChangeNotifier {
+  AppState({SupabaseService? supabaseService})
+      : _supabaseService = supabaseService ?? SupabaseService() {
+    _seedUsers();
+    _bootstrap();
+  }
+
   final Uuid _uuid = const Uuid();
+  final SupabaseService _supabaseService;
 
   late UserProfile _currentUser;
 
   final Map<String, UserProfile> _users = {};
   List<Job> _jobs = [];
   final List<ChatMessage> _messages = [];
+  final Map<String, List<String>> _jobImages = {};
 
-  AppState() {
-    _seed();
-  }
+  bool _isLoadingJobs = false;
+  bool _hasLoadedJobs = false;
+  String? _jobsError;
 
   UserProfile get currentUser => _currentUser;
-
   List<Job> get jobs => List.unmodifiable(_jobs);
+  bool get isLoadingJobs => _isLoadingJobs;
+  bool get hasLoadedJobs => _hasLoadedJobs;
+  String? get jobsError => _jobsError;
 
-  UserProfile? getUserById(String id) => _users[id];
+  List<Job> get allJobsSortedByNewest {
+    final copy = [..._jobs];
+    copy.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return copy;
+  }
 
-  UserProfile getJobOwner(Job job) =>
-      _users[job.createdByUserId] ?? _currentUser;
+  List<Job> get postedByCurrentUser =>
+      _jobs.where((j) => j.createdByUserId == _currentUser.id).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  void switchUser() {
-    final ids = _users.keys.toList();
-    if (ids.length < 2) return;
+  List<Job> get takenByCurrentUser =>
+      _jobs.where((j) => j.acceptedByUserId == _currentUser.id).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    final currentIndex = ids.indexOf(_currentUser.id);
-    final nextIndex = (currentIndex + 1) % ids.length;
-    _currentUser = _users[ids[nextIndex]]!;
+  Future<void> _bootstrap() async {
+    await ensureJobsLoaded();
+  }
+
+  Future<void> ensureJobsLoaded() async {
+    if (_isLoadingJobs) return;
+
+    _isLoadingJobs = true;
+    _jobsError = null;
+    notifyListeners();
+
+    try {
+      final remoteJobs = await _supabaseService.fetchJobs();
+      _jobs = remoteJobs;
+      _hasLoadedJobs = true;
+    } catch (e) {
+      debugPrint('Fallback til local jobs: $e');
+      _jobs = _buildSeedJobs();
+      _hasLoadedJobs = true;
+      _jobsError = 'Viser lokale testdata fordi Supabase ikke svarte.';
+    }
+
+    _isLoadingJobs = false;
     notifyListeners();
   }
 
+  Future<void> reloadJobs() async {
+    _isLoadingJobs = true;
+    _jobsError = null;
+    notifyListeners();
+
+    try {
+      final remoteJobs = await _supabaseService.fetchJobs();
+      _jobs = remoteJobs;
+      _hasLoadedJobs = true;
+    } catch (e) {
+      debugPrint('reloadJobs error: $e');
+      _jobsError = 'Kunne ikke oppdatere oppdrag akkurat nå.';
+    }
+
+    _isLoadingJobs = false;
+    notifyListeners();
+  }
+
+  Job? getJobById(String id) {
+    try {
+      return _jobs.firstWhere((j) => j.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  UserProfile? getUserById(String id) => _users[id];
+
+  List<String> getImages(String jobId) =>
+      List.unmodifiable(_jobImages[jobId] ?? const []);
+
+  List<ChatMessage> getMessagesForJob(String jobId) {
+    final result = _messages.where((m) => m.jobId == jobId).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return result;
+  }
+
   List<Job> get smartRankedJobs {
-    final list = _jobs.where((j) => j.status == JobStatus.open).toList();
-
-    list.sort((a, b) {
-      final aFresh =
-          DateTime.now().difference(a.createdAt).inHours < 24 ? 10 : 0;
-      final bFresh =
-          DateTime.now().difference(b.createdAt).inHours < 24 ? 10 : 0;
-
-      final aScore = a.viewCount + aFresh;
-      final bScore = b.viewCount + bFresh;
-      return bScore.compareTo(aScore);
-    });
-
-    return list;
+    final result = _jobs.where((j) {
+      if (j.status == JobStatus.completed) return false;
+      if (j.createdByUserId == _currentUser.id) return false;
+      return true;
+    }).toList()
+      ..sort((a, b) {
+        final scoreA =
+            a.viewCount + a.createdAt.millisecondsSinceEpoch ~/ 10000000;
+        final scoreB =
+            b.viewCount + b.createdAt.millisecondsSinceEpoch ~/ 10000000;
+        return scoreB.compareTo(scoreA);
+      });
+    return result;
   }
 
-  List<Job> get sortedOpenJobs {
-    final list = _jobs.where((j) => j.status == JobStatus.open).toList();
-    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
+  List<Job> get chatJobs {
+    return _jobs.where((job) {
+      final involved = job.createdByUserId == _currentUser.id ||
+          job.acceptedByUserId == _currentUser.id;
+      return involved && job.acceptedByUserId != null;
+    }).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
-  List<Job> get chatJobs => _jobs
-      .where(
-        (j) =>
-            j.createdByUserId == _currentUser.id ||
-            j.acceptedByUserId == _currentUser.id,
-      )
-      .toList();
+  List<Job> get activeTakenJobs => _jobs.where((j) {
+        if (j.acceptedByUserId != _currentUser.id) return false;
+        return j.status != JobStatus.completed;
+      }).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  List<Job> get activeTakenJobs => _jobs
-      .where(
-        (j) =>
-            j.acceptedByUserId == _currentUser.id &&
-            j.status != JobStatus.completed,
-      )
-      .toList();
+  List<Job> get completedTakenJobs => _jobs.where((j) {
+        if (j.acceptedByUserId != _currentUser.id) return false;
+        return j.status == JobStatus.completed && j.isApprovedByOwner;
+      }).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  List<Job> get completedTakenJobs => _jobs
-      .where(
-        (j) =>
-            j.acceptedByUserId == _currentUser.id &&
-            j.status == JobStatus.completed,
-      )
-      .toList();
+  List<Job> get activePostedJobs => _jobs.where((j) {
+        if (j.createdByUserId != _currentUser.id) return false;
+        return j.status != JobStatus.completed;
+      }).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  List<Job> get activePostedJobs => _jobs
-      .where(
-        (j) =>
-            j.createdByUserId == _currentUser.id &&
-            j.status != JobStatus.completed,
-      )
-      .toList();
-
-  List<Job> get completedPostedJobs => _jobs
-      .where(
-        (j) =>
-            j.createdByUserId == _currentUser.id &&
-            j.status == JobStatus.completed,
-      )
-      .toList();
+  List<Job> get completedPostedJobs => _jobs.where((j) {
+        if (j.createdByUserId != _currentUser.id) return false;
+        return j.status == JobStatus.completed && j.isApprovedByOwner;
+      }).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   double get moneyEarned =>
-      completedTakenJobs.fold(0, (sum, job) => sum + job.payout);
+      completedTakenJobs.fold(0.0, (sum, j) => sum + j.payout);
 
   double get moneySpent =>
-      completedPostedJobs.fold(0, (sum, job) => sum + job.totalPrice);
+      completedPostedJobs.fold(0.0, (sum, j) => sum + j.totalPrice);
 
   List<int> get availableTaxReportYears {
     final years = <int>{
       DateTime.now().year,
-      ...completedTakenJobs.map((j) => j.createdAt.year),
-      ...completedPostedJobs.map((j) => j.createdAt.year),
-    }.toList();
-
-    years.sort((a, b) => b.compareTo(a));
+      ..._jobs.map((j) => j.createdAt.year),
+    }.toList()
+      ..sort((a, b) => b.compareTo(a));
     return years;
   }
 
   TaxReportSummary buildTaxReportForYear(int year) {
-    final incomeEntries = completedTakenJobs
-        .where((job) => job.createdAt.year == year)
-        .map(
-          (job) => TaxReportEntry(
-            id: 'income_${job.id}',
-            type: TaxTransactionType.income,
-            date: job.createdAt,
-            jobTitle: job.title,
-            category: job.category,
-            locationName: job.locationName,
-            amount: job.payout,
-            sourceJobId: job.id,
-          ),
-        )
-        .toList();
+    final entries = <TaxReportEntry>[];
 
-    final expenseEntries = completedPostedJobs
-        .where((job) => job.createdAt.year == year)
-        .map(
-          (job) => TaxReportEntry(
-            id: 'expense_${job.id}',
-            type: TaxTransactionType.expense,
-            date: job.createdAt,
-            jobTitle: job.title,
-            category: job.category,
-            locationName: job.locationName,
-            amount: job.totalPrice,
-            sourceJobId: job.id,
-          ),
-        )
-        .toList();
+    for (final job
+        in completedTakenJobs.where((j) => j.createdAt.year == year)) {
+      entries.add(
+        TaxReportEntry(
+          id: 'income_${job.id}',
+          type: TaxTransactionType.income,
+          date: job.createdAt,
+          jobTitle: job.title,
+          category: job.category,
+          locationName: job.locationName,
+          amount: job.payout,
+          sourceJobId: job.id,
+        ),
+      );
+    }
 
-    final entries = <TaxReportEntry>[
-      ...incomeEntries,
-      ...expenseEntries,
-    ]..sort((a, b) => b.date.compareTo(a.date));
+    for (final job
+        in completedPostedJobs.where((j) => j.createdAt.year == year)) {
+      entries.add(
+        TaxReportEntry(
+          id: 'expense_${job.id}',
+          type: TaxTransactionType.expense,
+          date: job.createdAt,
+          jobTitle: job.title,
+          category: job.category,
+          locationName: job.locationName,
+          amount: job.totalPrice,
+          sourceJobId: job.id,
+        ),
+      );
+    }
 
-    final totalIncome =
-        incomeEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
+    entries.sort((a, b) => b.date.compareTo(a.date));
 
-    final totalExpenses =
-        expenseEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
+    final totalIncome = entries
+        .where((e) => e.isIncome)
+        .fold<double>(0, (sum, e) => sum + e.amount);
+
+    final totalExpenses = entries
+        .where((e) => !e.isIncome)
+        .fold<double>(0, (sum, e) => sum + e.amount);
 
     return TaxReportSummary(
       year: year,
@@ -230,15 +273,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void _replaceJob(Job updated) {
-    final index = _jobs.indexWhere((j) => j.id == updated.id);
-    if (index == -1) return;
-
-    _jobs[index] = updated;
-    notifyListeners();
-  }
-
-  void addJob({
+  Future<void> addJob({
     required String title,
     required String description,
     required int price,
@@ -247,75 +282,225 @@ class AppState extends ChangeNotifier {
     required double lat,
     required double lng,
     String? imageUrl,
-  }) {
+    List<String>? imageUrls,
+  }) async {
     final job = Job(
       id: _uuid.v4(),
-      title: title.trim(),
-      description: description.trim(),
+      title: title,
+      description: description,
       price: price,
+      category: category,
       locationName: locationName,
       lat: lat,
       lng: lng,
-      category: category,
       imageUrl: imageUrl,
       createdByUserId: _currentUser.id,
-      acceptedByUserId: null,
       status: JobStatus.open,
       createdAt: DateTime.now(),
       viewCount: 0,
-      reservedAt: null,
-      isPaymentReserved: false,
-      isCompletedByWorker: false,
-      isApprovedByOwner: false,
-      cancelRequestedByUserId: null,
     );
 
     _jobs.insert(0, job);
+
+    if (imageUrls != null && imageUrls.isNotEmpty) {
+      _jobImages[job.id] = List<String>.from(imageUrls);
+    } else if (imageUrl != null && imageUrl.isNotEmpty) {
+      _jobImages[job.id] = [imageUrl];
+    }
+
+    notifyListeners();
+
+    try {
+      final saved = await _supabaseService.createJob(job);
+
+      if (imageUrls != null && imageUrls.isNotEmpty) {
+        await _supabaseService.addJobImages(jobId: job.id, urls: imageUrls);
+      }
+
+      if (saved != null) {
+        _replaceJobLocally(saved);
+      }
+    } catch (e) {
+      debugPrint('addJob error: $e');
+    }
+
     notifyListeners();
   }
 
-  void reserveJob(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
-    if (job.status != JobStatus.open) return;
+  Future<bool> updateOwnJob({
+    required String jobId,
+    required String title,
+    required String description,
+    required int price,
+    required String category,
+    required String locationName,
+    required double lat,
+    required double lng,
+  }) async {
+    final job = getJobById(jobId);
+    if (job == null) return false;
+    if (job.createdByUserId != _currentUser.id) return false;
+    if (job.status != JobStatus.open) return false;
 
-    _replaceJob(
-      job.copyWith(
-        status: JobStatus.reserved,
-        acceptedByUserId: _currentUser.id,
-        reservedAt: DateTime.now(),
-        isPaymentReserved: false,
-        isCompletedByWorker: false,
-        isApprovedByOwner: false,
-        cancelRequestedByUserId: null,
-      ),
+    final updated = job.copyWith(
+      title: title,
+      description: description,
+      price: price,
+      category: category,
+      locationName: locationName,
+      lat: lat,
+      lng: lng,
     );
+
+    _replaceJobLocally(updated);
+    notifyListeners();
+
+    try {
+      final saved = await _supabaseService.updateJob(updated);
+      if (saved != null) {
+        _replaceJobLocally(saved);
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('updateOwnJob error: $e');
+      return false;
+    }
   }
 
-  void releaseJob(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
+  Future<bool> deleteOwnJob(String jobId) async {
+    final job = getJobById(jobId);
+    if (job == null) return false;
+    if (job.createdByUserId != _currentUser.id) return false;
+    if (job.status != JobStatus.open) return false;
 
-    _replaceJob(
-      job.copyWith(
-        status: JobStatus.open,
-        acceptedByUserId: null,
-        reservedAt: null,
-        isPaymentReserved: false,
-        isCompletedByWorker: false,
-        isApprovedByOwner: false,
-        cancelRequestedByUserId: null,
-      ),
-    );
+    final previousJobs = [..._jobs];
+    _jobs.removeWhere((j) => j.id == jobId);
+    _jobImages.remove(jobId);
+    notifyListeners();
+
+    try {
+      await _supabaseService.deleteJob(jobId);
+      return true;
+    } catch (e) {
+      debugPrint('deleteOwnJob error: $e');
+      _jobs = previousJobs;
+      notifyListeners();
+      return false;
+    }
   }
 
-  void expireReservation(String id) {
-    final index = _jobs.indexWhere((j) => j.id == id);
-    if (index == -1) return;
+  Future<bool> reserveJob(String id) async {
+    final job = getJobById(id);
+    if (job == null) return false;
+    if (job.status != JobStatus.open) return false;
+    if (job.createdByUserId == _currentUser.id) return false;
 
-    final job = _jobs[index];
+    final updated = job.copyWith(
+      status: JobStatus.reserved,
+      acceptedByUserId: _currentUser.id,
+      reservedAt: DateTime.now(),
+      cancelRequestedByUserId: null,
+      isPaymentReserved: false,
+      isCompletedByWorker: false,
+      isApprovedByOwner: false,
+    );
 
+    _replaceJobLocally(updated);
+    _addSystemMessage(
+      jobId: id,
+      text: '${_currentUser.firstName} reserverte oppdraget.',
+    );
+    notifyListeners();
+
+    try {
+      final saved = await _supabaseService.updateJob(updated);
+      if (saved != null) {
+        _replaceJobLocally(saved);
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Reserve feilet: $e');
+      return false;
+    }
+  }
+
+  Future<void> cancelReservation(String id) async {
+    await releaseJob(id);
+  }
+
+  Future<void> startJob(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
     if (job.status != JobStatus.reserved) return;
+    if (job.acceptedByUserId != _currentUser.id) return;
 
-    _jobs[index] = job.copyWith(
+    final updated = job.copyWith(
+      status: JobStatus.inProgress,
+      isPaymentReserved: true,
+      cancelRequestedByUserId: null,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage: '${_currentUser.firstName} startet oppdraget.',
+    );
+  }
+
+  Future<void> completeJob(String id) async {
+    await completeJobByWorker(id);
+  }
+
+  Future<void> completeJobByWorker(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.status != JobStatus.inProgress) return;
+    if (job.acceptedByUserId != _currentUser.id) return;
+    if (job.isCompletedByWorker) return;
+
+    final updated = job.copyWith(
+      isCompletedByWorker: true,
+      cancelRequestedByUserId: null,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage:
+          '${_currentUser.firstName} markerte oppdraget som fullført. Venter på godkjenning fra oppdragsgiver.',
+    );
+  }
+
+  Future<void> approveAndReleasePayment(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.createdByUserId != _currentUser.id) return;
+    if (job.status != JobStatus.inProgress) return;
+    if (!job.isCompletedByWorker) return;
+
+    final updated = job.copyWith(
+      status: JobStatus.completed,
+      isApprovedByOwner: true,
+      cancelRequestedByUserId: null,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage:
+          '${_currentUser.firstName} godkjente oppdraget. Klar for utbetaling via escrow/Stripe senere.',
+    );
+  }
+
+  Future<void> releaseJob(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.status != JobStatus.reserved) return;
+    if (job.acceptedByUserId != _currentUser.id &&
+        job.createdByUserId != _currentUser.id) {
+      return;
+    }
+
+    final updated = job.copyWith(
       status: JobStatus.open,
       acceptedByUserId: null,
       reservedAt: null,
@@ -325,123 +510,149 @@ class AppState extends ChangeNotifier {
       cancelRequestedByUserId: null,
     );
 
-    _systemMessage(id, 'Reservasjonen utløp automatisk.');
-    notifyListeners();
-  }
-
-  void startJob(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
-
-    _replaceJob(
-      job.copyWith(
-        status: JobStatus.inProgress,
-        isPaymentReserved: true,
-      ),
+    await _saveJobUpdate(
+      updated,
+      systemMessage: 'Reservasjonen ble opphevet.',
     );
   }
 
-  void completeJobByWorker(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
+  Future<void> expireReservation(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+    if (job.status != JobStatus.reserved) return;
 
-    _replaceJob(
-      job.copyWith(
-        isCompletedByWorker: true,
-      ),
+    final reservedUntil = job.reservedUntil;
+    if (reservedUntil == null || reservedUntil.isAfter(DateTime.now())) return;
+
+    final updated = job.copyWith(
+      status: JobStatus.open,
+      acceptedByUserId: null,
+      reservedAt: null,
+      cancelRequestedByUserId: null,
+      isPaymentReserved: false,
+      isCompletedByWorker: false,
+      isApprovedByOwner: false,
+    );
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage: 'Reservasjonen utløp automatisk.',
     );
   }
 
-  void approveAndReleasePayment(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
+  Future<void> cancelJob(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
 
-    _replaceJob(
-      job.copyWith(
-        isApprovedByOwner: true,
-        status: JobStatus.completed,
-      ),
-    );
-  }
+    final isOwner = job.createdByUserId == _currentUser.id;
+    final isWorker = job.acceptedByUserId == _currentUser.id;
+    if (!isOwner && !isWorker) return;
 
-  void completeJob(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
-
-    _replaceJob(
-      job.copyWith(
-        status: JobStatus.completed,
-      ),
-    );
-  }
-
-  void incrementView(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
-
-    _replaceJob(
-      job.copyWith(
-        viewCount: job.viewCount + 1,
-      ),
-    );
-  }
-
-  void requestCancel(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
-
-    if (!job.isPaymentReserved) {
-      _replaceJob(
-        job.copyWith(
-          status: JobStatus.open,
-          acceptedByUserId: null,
-          reservedAt: null,
-          isCompletedByWorker: false,
-          isApprovedByOwner: false,
-          cancelRequestedByUserId: null,
-        ),
+    if (job.status == JobStatus.open) {
+      final updated = job.copyWith(
+        status: JobStatus.open,
+        cancelRequestedByUserId: _currentUser.id,
       );
-      _systemMessage(id, 'Oppdrag ble avbrutt.');
+      await _saveJobUpdate(
+        updated,
+        systemMessage:
+            '${_currentUser.firstName} markerte oppdraget som avbrutt.',
+      );
       return;
     }
 
-    if (job.cancelRequestedByUserId == null) {
-      _replaceJob(
-        job.copyWith(
-          cancelRequestedByUserId: _currentUser.id,
-        ),
+    if (job.status == JobStatus.reserved) {
+      await releaseJob(id);
+      return;
+    }
+
+    if (job.status == JobStatus.inProgress) {
+      if (job.cancelRequestedByUserId != null &&
+          job.cancelRequestedByUserId != _currentUser.id) {
+        await approveCancel(id);
+        return;
+      }
+
+      final updated = job.copyWith(
+        cancelRequestedByUserId: _currentUser.id,
       );
-      _systemMessage(id, 'Avbrytelse forespurt. Begge må godkjenne.');
+
+      await _saveJobUpdate(
+        updated,
+        systemMessage:
+            '${_currentUser.firstName} ba om å avbryte oppdraget.',
+      );
     }
   }
 
-  void approveCancel(String id) {
-    final job = _jobs.firstWhere((e) => e.id == id);
+  Future<void> approveCancel(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
     if (job.cancelRequestedByUserId == null) return;
+
+    final canApprove = job.createdByUserId == _currentUser.id ||
+        job.acceptedByUserId == _currentUser.id;
+    if (!canApprove) return;
     if (job.cancelRequestedByUserId == _currentUser.id) return;
 
-    _replaceJob(
-      job.copyWith(
-        status: JobStatus.open,
-        acceptedByUserId: null,
-        reservedAt: null,
-        isPaymentReserved: false,
-        isCompletedByWorker: false,
-        isApprovedByOwner: false,
-        cancelRequestedByUserId: null,
-      ),
+    final updated = job.copyWith(
+      status: JobStatus.open,
+      acceptedByUserId: null,
+      reservedAt: null,
+      isPaymentReserved: false,
+      isCompletedByWorker: false,
+      isApprovedByOwner: false,
+      cancelRequestedByUserId: null,
     );
-    _systemMessage(id, 'Oppdrag avbrutt av begge parter.');
+
+    await _saveJobUpdate(
+      updated,
+      systemMessage: 'Avbrytelsen ble godkjent. Oppdraget er åpnet igjen.',
+    );
   }
 
-  void cancelJob(String id) {
-    requestCancel(id);
+  Future<void> incrementView(String id) async {
+    final job = getJobById(id);
+    if (job == null) return;
+
+    final updated = job.copyWith(viewCount: job.viewCount + 1);
+    _replaceJobLocally(updated);
+    notifyListeners();
+
+    try {
+      await _supabaseService.updateJob(updated);
+    } catch (e) {
+      debugPrint('incrementView error: $e');
+    }
   }
 
-  List<ChatMessage> getMessagesForJob(String jobId) {
-    final list = _messages.where((m) => m.jobId == jobId).toList();
-    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return list;
+  Future<void> loadImages(String id) async {
+    if (_jobImages.containsKey(id) && _jobImages[id]!.isNotEmpty) return;
+
+    final localJob = getJobById(id);
+    final localUrls = <String>[];
+
+    if (localJob?.imageUrl != null && localJob!.imageUrl!.isNotEmpty) {
+      localUrls.add(localJob.imageUrl!);
+    }
+
+    try {
+      final remote = await _supabaseService.fetchJobImages(id);
+      final merged = <String>{...localUrls, ...remote}.toList();
+      _jobImages[id] = merged;
+    } catch (e) {
+      debugPrint('loadImages error: $e');
+      _jobImages[id] = localUrls;
+    }
+
+    notifyListeners();
   }
 
-  void sendMessage(
-    String jobId,
-    String text, {
-    ChatMessage? replyTo,
+  void sendMessage({
+    required String jobId,
+    required String text,
+    String? replyToMessageId,
+    String? replyToText,
     String? imageUrl,
   }) {
     final trimmed = text.trim();
@@ -454,11 +665,12 @@ class AppState extends ChangeNotifier {
         senderId: _currentUser.id,
         text: trimmed,
         createdAt: DateTime.now(),
-        replyToMessageId: replyTo?.id,
-        replyToText: replyTo?.text,
+        replyToMessageId: replyToMessageId,
+        replyToText: replyToText,
         imageUrl: imageUrl,
       ),
     );
+
     notifyListeners();
   }
 
@@ -466,14 +678,103 @@ class AppState extends ChangeNotifier {
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index == -1) return;
 
-    final current = _messages[index];
-    final nextReaction = current.reaction == reaction ? null : reaction;
-
-    _messages[index] = current.copyWith(reaction: nextReaction);
+    final message = _messages[index];
+    final updated = message.copyWith(
+      reaction: message.reaction == reaction ? null : reaction,
+    );
+    _messages[index] = updated;
     notifyListeners();
   }
 
-  void _systemMessage(String jobId, String text) {
+  void setPushNotifications(bool value) {
+    _currentUser = _currentUser.copyWith(pushNotificationsEnabled: value);
+    _users[_currentUser.id] = _currentUser;
+    notifyListeners();
+  }
+
+  void updateProfile({
+    required String firstName,
+    required String email,
+    required String phone,
+    required bool wantsToWork,
+    required String preferredArea,
+  }) {
+    _currentUser = _currentUser.copyWith(
+      firstName: firstName,
+      email: email,
+      phone: phone,
+      wantsToWork: wantsToWork,
+      preferredArea: preferredArea,
+    );
+    _users[_currentUser.id] = _currentUser;
+    notifyListeners();
+  }
+
+  void switchUser() {
+    final ids = _users.keys.toList();
+    if (ids.length < 2) return;
+
+    final next = ids.firstWhere(
+      (id) => id != _currentUser.id,
+      orElse: () => _currentUser.id,
+    );
+
+    _currentUser = _users[next]!;
+    notifyListeners();
+  }
+
+  void rateUser({required String userId, required double newRating}) {
+    final user = _users[userId];
+    if (user == null) return;
+
+    final total = (user.rating * user.ratingCount) + newRating;
+    final nextCount = user.ratingCount + 1;
+    final nextRating = total / nextCount;
+
+    _users[userId] = user.copyWith(
+      rating: nextRating,
+      ratingCount: nextCount,
+    );
+
+    notifyListeners();
+  }
+
+  Future<void> _saveJobUpdate(
+    Job updated, {
+    String? systemMessage,
+  }) async {
+    _replaceJobLocally(updated);
+
+    if (systemMessage != null && systemMessage.isNotEmpty) {
+      _addSystemMessage(jobId: updated.id, text: systemMessage);
+    }
+
+    notifyListeners();
+
+    try {
+      final saved = await _supabaseService.updateJob(updated);
+      if (saved != null) {
+        _replaceJobLocally(saved);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('_saveJobUpdate error: $e');
+    }
+  }
+
+  void _replaceJobLocally(Job updated) {
+    final index = _jobs.indexWhere((j) => j.id == updated.id);
+    if (index == -1) {
+      _jobs.insert(0, updated);
+    } else {
+      _jobs[index] = updated;
+    }
+  }
+
+  void _addSystemMessage({
+    required String jobId,
+    required String text,
+  }) {
     _messages.add(
       ChatMessage(
         id: _uuid.v4(),
@@ -483,100 +784,29 @@ class AppState extends ChangeNotifier {
         createdAt: DateTime.now(),
       ),
     );
-    notifyListeners();
   }
 
-  void setPushNotifications(bool value) {
-    _currentUser = _currentUser.copyWith(
-      pushNotificationsEnabled: value,
-    );
-    _users[_currentUser.id] = _currentUser;
-    notifyListeners();
-  }
-
-  void updateProfile({
-    required String firstName,
-    String? email,
-    String? phone,
-    bool? wantsToWork,
-    String? preferredArea,
-  }) {
-    _currentUser = _currentUser.copyWith(
-      firstName: firstName,
-      email: email ?? _currentUser.email,
-      phone: phone ?? _currentUser.phone,
-      wantsToWork: wantsToWork ?? _currentUser.wantsToWork,
-      preferredArea: preferredArea ?? _currentUser.preferredArea,
-    );
-    _users[_currentUser.id] = _currentUser;
-    notifyListeners();
-  }
-
-  void rateUser({
-    required String userId,
-    required double newRating,
-  }) {
-    final user = _users[userId];
-    if (user == null) return;
-
-    final total = (user.rating * user.ratingCount) + newRating;
-    final count = user.ratingCount + 1;
-
-    _users[userId] = user.copyWith(
-      rating: total / count,
-      ratingCount: count,
-    );
-    notifyListeners();
-  }
-
-  void checkExpiredReservations() {
-    final now = DateTime.now();
-    bool changed = false;
-
-    _jobs = _jobs.map((job) {
-      if (job.status == JobStatus.reserved &&
-          job.reservedUntil != null &&
-          now.isAfter(job.reservedUntil!)) {
-        changed = true;
-        return job.copyWith(
-          status: JobStatus.open,
-          acceptedByUserId: null,
-          reservedAt: null,
-          isPaymentReserved: false,
-          isCompletedByWorker: false,
-          isApprovedByOwner: false,
-          cancelRequestedByUserId: null,
-        );
-      }
-      return job;
-    }).toList();
-
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
-  void _seed() {
+  void _seedUsers() {
     final owner = UserProfile(
-      id: 'u1',
+      id: '1',
       firstName: 'Anders',
-      email: 'anders@smarthjelp.test',
-      phone: '90000001',
+      email: '',
+      phone: '',
       wantsToWork: false,
       preferredArea: 'Skien',
-      rating: 4.8,
-      ratingCount: 12,
+      rating: 4.5,
+      ratingCount: 10,
       pushNotificationsEnabled: true,
     );
 
     final worker = UserProfile(
-      id: 'u2',
+      id: '2',
       firstName: 'Kenneth',
-      email: 'kenneth@smarthjelp.test',
-      phone: '90000002',
+      email: '',
+      phone: '',
       wantsToWork: true,
       preferredArea: 'Skien',
-      rating: 5.0,
+      rating: 5,
       ratingCount: 1,
       pushNotificationsEnabled: true,
     );
@@ -584,106 +814,24 @@ class AppState extends ChangeNotifier {
     _users[owner.id] = owner;
     _users[worker.id] = worker;
     _currentUser = worker;
+  }
 
-    _jobs = [
+  List<Job> _buildSeedJobs() {
+    return [
       Job(
-        id: 'j1',
+        id: '1',
         title: 'Bære ved',
-        description: 'Trenger hjelp til å bære ved.',
+        description: 'Trenger hjelp med å bære ved inn i boden.',
         price: 300,
         category: 'Hage',
         locationName: 'Skien',
-        lat: 59.14,
-        lng: 9.65,
-        createdByUserId: owner.id,
-        acceptedByUserId: null,
+        lat: 59.2096,
+        lng: 9.6089,
+        createdByUserId: '1',
         status: JobStatus.open,
-        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-        viewCount: 6,
-      ),
-      Job(
-        id: 'j2',
-        title: 'Male vegg',
-        description: 'Lite rom, maling tilgjengelig.',
-        price: 900,
-        category: 'Maling',
-        locationName: 'Porsgrunn',
-        lat: 59.13,
-        lng: 9.64,
-        createdByUserId: owner.id,
-        acceptedByUserId: worker.id,
-        status: JobStatus.reserved,
-        createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-        viewCount: 9,
-        reservedAt: DateTime.now().subtract(const Duration(minutes: 2)),
-      ),
-      Job(
-        id: 'j3',
-        title: 'Flytte sofa',
-        description: 'Bære sofa opp i 2. etasje.',
-        price: 500,
-        category: 'Flytting',
-        locationName: 'Skien',
-        lat: 59.15,
-        lng: 9.63,
-        createdByUserId: owner.id,
-        acceptedByUserId: worker.id,
-        status: JobStatus.inProgress,
-        createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-        viewCount: 12,
-        reservedAt: DateTime.now().subtract(const Duration(minutes: 25)),
-        isPaymentReserved: true,
-      ),
-      Job(
-        id: 'j4',
-        title: 'Klippe plen',
-        description: 'Jobben er ferdig og godkjent.',
-        price: 400,
-        category: 'Hage',
-        locationName: 'Bamble',
-        lat: 59.02,
-        lng: 9.71,
-        createdByUserId: owner.id,
-        acceptedByUserId: worker.id,
-        status: JobStatus.completed,
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        viewCount: 20,
-        reservedAt: DateTime.now().subtract(const Duration(days: 1)),
-        isPaymentReserved: true,
-        isCompletedByWorker: true,
-        isApprovedByOwner: true,
+        createdAt: DateTime.now(),
+        viewCount: 0,
       ),
     ];
-
-    _messages.addAll([
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: 'j3',
-        senderId: owner.id,
-        text: 'Hei! Når kan du komme?',
-        createdAt: DateTime.now().subtract(const Duration(minutes: 12)),
-      ),
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: 'j3',
-        senderId: worker.id,
-        text: 'Jeg er der om ca 20 min 👍',
-        createdAt: DateTime.now().subtract(const Duration(minutes: 8)),
-      ),
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: 'j2',
-        senderId: owner.id,
-        text: 'Passer det i kveld?',
-        createdAt: DateTime.now().subtract(const Duration(minutes: 15)),
-      ),
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: 'j2',
-        senderId: worker.id,
-        text: 'Ja, det passer fint.',
-        createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
-      ),
-    ]);
   }
 }
