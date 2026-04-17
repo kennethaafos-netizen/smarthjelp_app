@@ -43,3 +43,22 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# 🔐 ENV / SECRETS
+.env
+.env.*
+*.env
+
+# 🔐 Supabase / API keys (hvis du lagrer noe lokalt)
+supabase/.env
+supabase/.env.*
+
+# 🔐 Android / iOS sensitive
+android/key.properties
+*.keystore
+*.jks
+
+# 🔐 iOS config
+ios/Runner/GoogleService-Info.plist
+
+# 🔐 VS Code settings (valgfritt)
+.vscode/
