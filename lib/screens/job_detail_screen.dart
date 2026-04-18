@@ -1,3 +1,4 @@
+// lib/screens/job_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -19,16 +20,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   bool _isLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    // Sørg for at eventuelle bilder lastes når detaljsiden åpnes.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<AppState>().loadImages(widget.job.id);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final job = appState.getJobById(widget.job.id) ?? widget.job;
@@ -39,6 +30,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     final images = appState.getImages(job.id);
 
+    // 🔥 EXACT vs APPROX (prepares "unlock address after accept")
+    final double viewLat =
+        isWorker ? job.visibleLatForReservedWorker : job.lat;
+    final double viewLng =
+        isWorker ? job.visibleLngForReservedWorker : job.lng;
+
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
       body: Column(
@@ -47,19 +44,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  job.title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(job.title,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Text(job.description),
                 const SizedBox(height: 20),
-
-                // -------- CANCEL-BANNER --------
-                _cancelBanner(job, isOwner, isWorker, currentUser.id),
 
                 // -------- BILDER --------
                 if (images.isNotEmpty)
@@ -88,20 +78,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                               tag: url,
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  url,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    width: 200,
-                                    color: Colors.grey.shade200,
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.broken_image_outlined,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                                child: Image.network(url),
                               ),
                             ),
                           ),
@@ -112,15 +89,56 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
                 const SizedBox(height: 20),
 
+                _locationSection(job, isWorker, viewLat, viewLng),
+
+                const SizedBox(height: 20),
+
                 _priceSection(job, isOwner),
 
                 const SizedBox(height: 20),
-                Text('Status: ${_statusLabel(job)}'),
+                Text('Status: ${job.status.name}'),
+              ],
+            ),
+          ),
 
-                const SizedBox(height: 4),
+          _actionButtons(job, isOwner, isWorker),
+        ],
+      ),
+    );
+  }
+
+  // ---------------- STED ----------------
+
+  Widget _locationSection(
+    Job job,
+    bool isWorker,
+    double viewLat,
+    double viewLng,
+  ) {
+    final subtitle = isWorker
+        ? 'Eksakt sted synlig for deg'
+        : 'Omtrentlig sted før du tar oppdraget';
+
+    return Semantics(
+      label: 'Koordinater $viewLat, $viewLng',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.place_outlined, size: 18, color: Color(0xFF2356E8)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  'Sted: ${job.locationName}',
+                  job.locationName,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
                   style: const TextStyle(
+                    fontSize: 12,
                     color: Color(0xFF6E7A90),
                     fontWeight: FontWeight.w600,
                   ),
@@ -128,132 +146,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ],
             ),
           ),
-
-          _actionButtons(job, isOwner, isWorker, currentUser.id),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- CANCEL BANNER ----------------
-
-  Widget _cancelBanner(
-    Job job,
-    bool isOwner,
-    bool isWorker,
-    String currentUserId,
-  ) {
-    final requestedBy = job.cancelRequestedByUserId;
-    if (requestedBy == null) return const SizedBox.shrink();
-
-    // Vi viser banner kun for relevante parter
-    if (!isOwner && !isWorker) return const SizedBox.shrink();
-
-    final iRequested = requestedBy == currentUserId;
-
-    // Under open-status: eier kan ha markert "avbrutt" på egen åpen jobb
-    // – da viser vi det som informasjon (ikke som approve/reject).
-    if (job.status == JobStatus.open) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.orange.shade300),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.orange),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Oppdraget er markert som avbrutt av eier.',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Under inProgress: approve/reject-flyt
-    final title = iRequested
-        ? 'Du har bedt om å avbryte oppdraget'
-        : 'Motparten har bedt om å avbryte oppdraget';
-
-    final description = iRequested
-        ? 'Motparten må godkjenne før oppdraget kan avbrytes. Du kan trekke tilbake forespørselen så lenge motparten ikke har svart.'
-        : 'Godkjenner du, åpnes oppdraget igjen. Avslår du, fortsetter oppdraget som før.';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.orange.shade300),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF172033),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            description,
-            style: const TextStyle(
-              color: Color(0xFF6E7A90),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (iRequested)
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _confirmWithdraw(job.id),
-                icon: const Icon(Icons.undo),
-                label: const Text('Trekk tilbake forespørsel'),
-              ),
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _confirmApproveCancel(job.id),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Godkjenn avbrytelse'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _confirmRejectCancel(job.id),
-                    icon: const Icon(Icons.close),
-                    label: const Text('Avslå'),
-                  ),
-                ),
-              ],
-            ),
         ],
       ),
     );
@@ -265,31 +157,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Betaling',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        const Text('Betaling',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         if (isOwner) ...[
           Text('Oppdrag: ${job.price} kr'),
-          Text(
-            'Plattformavgift: ${job.platformFee.toStringAsFixed(0)} kr inkl. mva',
-          ),
-          Text(
-            'Totalt å betale: ${job.totalPrice.toStringAsFixed(0)} kr',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF2356E8),
-            ),
-          ),
+          Text('Plattformavgift: ${job.platformFee.toStringAsFixed(0)} kr'),
+          Text('Totalt: ${job.totalPrice.toStringAsFixed(0)} kr'),
         ] else ...[
-          Text(
-            'Du tjener: ${job.payout.toStringAsFixed(0)} kr',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF18B7A6),
-            ),
-          ),
+          Text('Du tjener: ${job.payout.toStringAsFixed(0)} kr'),
         ],
       ],
     );
@@ -297,15 +173,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
   // ---------------- ACTIONS ----------------
 
-  Widget _actionButtons(
-    Job job,
-    bool isOwner,
-    bool isWorker,
-    String currentUserId,
-  ) {
+  Widget _actionButtons(Job job, bool isOwner, bool isWorker) {
     final appState = context.read<AppState>();
-    final cancelRequested = job.cancelRequestedByUserId != null;
-    final iRequestedCancel = job.cancelRequestedByUserId == currentUserId;
 
     return SafeArea(
       child: Padding(
@@ -320,19 +189,22 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               _mainButton('Ta jobb', () async {
                 await _runAction(() async {
                   final ok = await appState.reserveJob(job.id);
-                  if (!ok) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Kunne ikke reservere oppdraget.'),
-                        ),
-                      );
-                    }
-                    return;
-                  }
+                  if (!ok) return;
                   _reload(job.id);
                 });
               }),
+
+            // -------- AVBRYT (NY LOGIKK) --------
+            if (!_isLoading &&
+                (isOwner || isWorker) &&
+                job.status != JobStatus.completed)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _confirmCancel(job.id),
+                  child: const Text('Avbryt oppdrag'),
+                ),
+              ),
 
             // -------- START --------
             if (!_isLoading &&
@@ -357,7 +229,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 });
               }),
 
-            // -------- GODKJENN OG BETAL UT --------
+            // -------- GODKJENN --------
             if (!_isLoading &&
                 job.status == JobStatus.inProgress &&
                 isOwner &&
@@ -368,31 +240,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                   _reload(job.id);
                 });
               }),
-
-            // -------- AVBRYT OPPDRAG --------
-            // Vises når:
-            //   - du er involvert (eier eller arbeider)
-            //   - jobben ikke er fullført
-            //   - det ikke allerede foreligger en cancel-forespørsel fra deg
-            //     (du har da "Trekk tilbake"-knappen i banneret i stedet)
-            if (!_isLoading &&
-                (isOwner || isWorker) &&
-                job.status != JobStatus.completed &&
-                !(cancelRequested && iRequestedCancel))
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => _confirmCancel(job),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                    ),
-                    child: const Text('Avbryt oppdrag'),
-                  ),
-                ),
-              ),
 
             const SizedBox(height: 10),
 
@@ -419,53 +266,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  // ---------------- CONFIRM DIALOGS ----------------
+  // ---------------- CONFIRM DIALOG ----------------
 
-  Future<void> _confirmCancel(Job job) async {
+  Future<void> _confirmCancel(String jobId) async {
     final appState = context.read<AppState>();
-    final currentUserId = appState.currentUser.id;
-    final isOwner = job.createdByUserId == currentUserId;
-    final isWorker = job.acceptedByUserId == currentUserId;
-
-    String title;
-    String body;
-    String confirmLabel;
-
-    switch (job.status) {
-      case JobStatus.open:
-        if (!isOwner) {
-          // Worker skal aldri komme hit for open-jobb, men vi er defensive
-          return;
-        }
-        title = 'Slette oppdrag';
-        body =
-            'Oppdraget er ikke tatt enda. Vil du slette det permanent? Dette kan ikke angres.';
-        confirmLabel = 'Slett';
-        break;
-
-      case JobStatus.reserved:
-        title = 'Avbryt reservasjon';
-        body =
-            'Reservasjonen vil oppheves og oppdraget blir åpent igjen. Er du sikker?';
-        confirmLabel = 'Avbryt reservasjon';
-        break;
-
-      case JobStatus.inProgress:
-        title = 'Be om å avbryte';
-        body =
-            'Oppdraget er i gang. Motparten må godkjenne før oppdraget kan avbrytes. Vil du sende en forespørsel?';
-        confirmLabel = 'Send forespørsel';
-        break;
-
-      case JobStatus.completed:
-        return;
-    }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
+        title: const Text('Avbryt oppdrag'),
+        content: const Text('Er du sikker på at du vil avbryte?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -473,157 +283,29 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(confirmLabel),
+            child: const Text('Ja'),
           ),
         ],
       ),
     );
 
-    if (confirm != true || !mounted) return;
-
-    // open + eier → slett helt
-    if (job.status == JobStatus.open && isOwner) {
+    if (confirm == true) {
       await _runAction(() async {
-        final ok = await appState.deleteOwnJob(job.id);
-        if (!mounted) return;
-        if (ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Oppdraget ble slettet.')),
-          );
-          Navigator.pop(context);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Kunne ikke slette oppdraget.')),
-          );
-        }
+        await appState.cancelJob(jobId);
+        _reload(jobId);
       });
-      return;
     }
-
-    // reserved → direkte release, inProgress → request via cancelJob
-    await _runAction(() async {
-      await appState.cancelJob(job.id);
-      if (!mounted) return;
-      _reload(job.id);
-      if (!mounted) return;
-      final updated = appState.getJobById(job.id);
-      final becameOpen = updated?.status == JobStatus.open;
-      final msg = becameOpen
-          ? 'Reservasjonen ble opphevet. Oppdraget er åpent igjen.'
-          : (isOwner || isWorker)
-              ? 'Forespørsel om avbrytelse ble sendt.'
-              : 'Oppdatert.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-    });
-  }
-
-  Future<void> _confirmApproveCancel(String jobId) async {
-    final appState = context.read<AppState>();
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Godkjenn avbrytelse'),
-        content: const Text(
-          'Er du sikker på at du vil godkjenne avbrytelsen? Oppdraget blir åpnet igjen.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Nei'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Ja, godkjenn'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    await _runAction(() async {
-      await appState.approveCancel(jobId);
-      _reload(jobId);
-    });
-  }
-
-  Future<void> _confirmRejectCancel(String jobId) async {
-    final appState = context.read<AppState>();
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Avslå forespørsel'),
-        content: const Text(
-          'Vil du avslå forespørselen om avbrytelse? Oppdraget fortsetter som før.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Avbryt'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Avslå'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    await _runAction(() async {
-      await appState.rejectCancel(jobId);
-      _reload(jobId);
-    });
-  }
-
-  Future<void> _confirmWithdraw(String jobId) async {
-    final appState = context.read<AppState>();
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Trekk tilbake forespørsel'),
-        content: const Text(
-          'Vil du trekke tilbake forespørselen om å avbryte? Oppdraget fortsetter som før.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Nei'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ja, trekk tilbake'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    await _runAction(() async {
-      await appState.withdrawCancelRequest(jobId);
-      _reload(jobId);
-    });
   }
 
   // ---------------- HELPERS ----------------
 
   Future<void> _runAction(Future<void> Function() fn) async {
     setState(() => _isLoading = true);
-    try {
-      await fn();
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    await fn();
+    if (mounted) setState(() => _isLoading = false);
   }
 
   void _reload(String id) {
-    if (!mounted) return;
     final updated = context.read<AppState>().getJobById(id);
     if (updated != null) {
       Navigator.pushReplacement(
@@ -643,20 +325,5 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         child: Text(text),
       ),
     );
-  }
-
-  String _statusLabel(Job job) {
-    switch (job.status) {
-      case JobStatus.open:
-        return 'Åpent';
-      case JobStatus.reserved:
-        return 'Reservert';
-      case JobStatus.inProgress:
-        return job.isCompletedByWorker
-            ? 'Venter på godkjenning'
-            : 'Pågår';
-      case JobStatus.completed:
-        return job.isApprovedByOwner ? 'Fullført' : 'Fullført (ikke godkjent)';
-    }
   }
 }

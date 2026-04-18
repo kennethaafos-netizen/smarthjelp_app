@@ -1,3 +1,4 @@
+// lib/widgets/job_card.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -38,17 +39,26 @@ class JobCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
+        splashColor: const Color(0xFF2356E8).withOpacity(0.08),
+        highlightColor: const Color(0xFF2356E8).withOpacity(0.04),
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
           margin: EdgeInsets.only(bottom: compact ? 0 : 14),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -74,12 +84,32 @@ class JobCard extends StatelessWidget {
                     },
                     child: Hero(
                       tag: previewUrl,
-                      child: Image.network(
-                        previewUrl,
-                        height: 160,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _imageFallback(),
+                      child: Stack(
+                        children: [
+                          Image.network(
+                            previewUrl,
+                            height: 160,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _imageFallback(),
+                          ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.22),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -87,7 +117,7 @@ class JobCard extends StatelessWidget {
               else
                 _imageFallback(),
               Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -103,9 +133,10 @@ class JobCard extends StatelessWidget {
                               fontWeight: FontWeight.w800,
                               fontSize: compact ? 14 : 16,
                               color: const Color(0xFF172033),
+                              height: 1.25,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             job.description,
                             maxLines: compact ? 1 : 2,
@@ -113,13 +144,20 @@ class JobCard extends StatelessWidget {
                             style: const TextStyle(
                               color: Color(0xFF6E7A90),
                               fontSize: 12,
+                              height: 1.35,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Row(
                             children: [
                               _chip(job.category),
                               const SizedBox(width: 8),
+                              const Icon(
+                                Icons.place_outlined,
+                                size: 14,
+                                color: Color(0xFF6E7A90),
+                              ),
+                              const SizedBox(width: 2),
                               Expanded(
                                 child: Text(
                                   distanceText,
@@ -127,19 +165,20 @@ class JobCard extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Color(0xFF6E7A90),
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                           if (!compact) ...[
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             _statusText(job, isOwner, isWorker),
                           ],
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -162,7 +201,7 @@ class JobCard extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         if (job.status == JobStatus.open && !isOwner)
                           SizedBox(
                             height: 34,
@@ -171,8 +210,9 @@ class JobCard extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF2356E8),
                                 foregroundColor: Colors.white,
+                                elevation: 0,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                  horizontal: 14,
                                   vertical: 0,
                                 ),
                                 shape: RoundedRectangleBorder(
@@ -198,8 +238,9 @@ class JobCard extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey,
                                 foregroundColor: Colors.white,
+                                elevation: 0,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                  horizontal: 14,
                                   vertical: 0,
                                 ),
                                 shape: RoundedRectangleBorder(
@@ -225,7 +266,7 @@ class JobCard extends StatelessWidget {
               if (!compact)
                 Padding(
                   padding:
-                      const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+                      const EdgeInsets.only(left: 14, right: 14, bottom: 14),
                   child: Row(
                     children: [
                       const CircleAvatar(radius: 12),

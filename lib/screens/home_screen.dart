@@ -1,7 +1,4 @@
-import 'dart:ui';
-
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
+// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -26,8 +23,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  GoogleMapController? _mapController;
-
   @override
   void initState() {
     super.initState();
@@ -37,17 +32,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final jobs = appState.smartRankedJobs;
 
-    _buildMarkers(jobs);
+    _buildMarkers(jobs, appState);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FC),
@@ -59,10 +48,35 @@ class _HomeScreenState extends State<HomeScreen> {
             _toggle(),
             const SizedBox(height: 10),
 
-            // 🔥 KART / LISTE (overlay-kort nå over kartet, ikke under)
+            // 🔥 KART / LISTE
             Expanded(
-              child: _showMap ? _mapView(jobs) : _listView(jobs),
+              child: _showMap ? _mapView(jobs, appState) : _listView(jobs, appState),
             ),
+
+            // 🔥 OPPDRAGSKORT UTENFOR MAP (VIKTIG)
+            if (_selectedJob != null)
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: JobCard(
+                    job: _selectedJob!,
+                    distanceText: appState.jobLocationLabel(_selectedJob!),
+                    onTap: () => _openJob(_selectedJob!),
+                    onTake: (_selectedJob!.status == JobStatus.open &&
+                           _selectedJob!.createdByUserId !=
+                               context.read<AppState>().currentUser.id)
+                        ? () => _takeAndOpen(_selectedJob!)
+                        : null,
+                    
+                  ),
+                ),
+              ),
+
+            if (_isTakingJob)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 20),
+                child: CircularProgressIndicator(),
+              ),
           ],
         ),
       ),
@@ -71,86 +85,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------------- MAP ----------------
 
-  Widget _mapView(List<Job> jobs) {
+  Widget _mapView(List<Job> jobs, AppState appState) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: Stack(
-          children: [
-            // 🔥 SELVE KARTET
-            Positioned.fill(
-              child: GoogleMap(
-                initialCameraPosition: const CameraPosition(
-                  target: LatLng(59.14, 9.65),
-                  zoom: 11,
-                ),
-                markers: _markers,
-                myLocationButtonEnabled: true,
-                zoomControlsEnabled: true,
-
-                // 🔥 EAGER GESTURES – fikser web/mobile-toggle touch-problemer
-                // slik at preview-kortet faktisk kan trykkes.
-                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                  Factory<OneSequenceGestureRecognizer>(
-                    () => EagerGestureRecognizer(),
-                  ),
-                },
-
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                },
-
-                // 🔥 VIKTIG: ingen auto-deselect ved tap på kartet.
-                // Tidligere fjernet dette preview-kortet for tidlig på web/mobile
-                // og gjorde knappene utilgjengelige. Kortet lukkes nå bare via X.
-                onTap: (_) {},
-              ),
-            ),
-
-            // 🔥 PREVIEW / OPPDRAGSLINJE SOM OVERLAY
-            if (_selectedJob != null)
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: _MapPreviewCard(
-                  job: _selectedJob!,
-                  isTaking: _isTakingJob,
-                  onClose: () => setState(() => _selectedJob = null),
-                  onOpen: () => _openJob(_selectedJob!),
-                  onTake: _selectedJob!.status == JobStatus.open &&
-                          _selectedJob!.createdByUserId !=
-                              context.read<AppState>().currentUser.id
-                      ? () => _takeAndOpen(_selectedJob!)
-                      : null,
-                ),
-              ),
-          ],
+        child: GoogleMap(
+          initialCameraPosition: const CameraPosition(
+            target: LatLng(59.14, 9.65),
+            zoom: 11,
+          ),
+          markers: _markers,
+          myLocationButtonEnabled: true,
+          zoomControlsEnabled: true,
+          onTap: (_) => setState(() => _selectedJob = null),
         ),
       ),
     );
   }
 
-  void _buildMarkers(List<Job> jobs) {
+  void _buildMarkers(List<Job> jobs, AppState appState) {
     _markers = jobs.map((job) {
       return Marker(
         markerId: MarkerId(job.id),
-        position: LatLng(job.lat, job.lng),
-        consumeTapEvents: true,
-        onTap: () async {
-          final fresh = context.read<AppState>().getJobById(job.id) ?? job;
+        position: LatLng(
+          appState.jobMarkerLat(job),
+          appState.jobMarkerLng(job),
+        ),
+        onTap: () {
+          final fresh =
+              context.read<AppState>().getJobById(job.id) ?? job;
 
           setState(() => _selectedJob = fresh);
-
-          // Anim kamera til jobbens posisjon (hvis mulig) så kortet gir mening
-          try {
-            await _mapController?.animateCamera(
-              CameraUpdate.newLatLng(LatLng(fresh.lat, fresh.lng)),
-            );
-          } catch (_) {
-            // ignorer – karten er ikke klar enda
-          }
         },
       );
     }).toSet();
@@ -158,32 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------------- LIST ----------------
 
-  Widget _listView(List<Job> jobs) {
-    if (jobs.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: const [
-          SizedBox(height: 40),
-          Center(
-            child: Text(
-              'Ingen oppdrag å vise akkurat nå.',
-              style: TextStyle(
-                color: Color(0xFF6E7A90),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
+  Widget _listView(List<Job> jobs, AppState appState) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: jobs
           .map(
             (job) => JobCard(
               job: job,
-              distanceText: job.locationName,
+              distanceText: appState.jobLocationLabel(job),
               onTap: () => _openJob(job),
               onTake: job.status == JobStatus.open
                   ? () => _takeAndOpen(job)
@@ -217,15 +165,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final updated = appState.getJobById(job.id);
 
-    // Rydd preview-kortet før vi åpner detaljsiden
-    setState(() {
-      _isTakingJob = false;
-      _selectedJob = null;
-    });
-
     if (updated != null) {
       _openJob(updated);
     }
+
+    setState(() => _isTakingJob = false);
   }
 
   void _openJob(Job job) {
@@ -255,26 +199,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Text(
-              '${jobs.length} oppdrag',
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF2356E8),
-              ),
-            ),
+          _CounterButton(
+            count: jobs.length,
+            onTap: () => setState(() => _showMap = false),
           ),
         ],
       ),
@@ -285,227 +212,74 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _toggleBtn('Kart', _showMap, () => setState(() => _showMap = true)),
-        const SizedBox(width: 12),
-        _toggleBtn('Liste', !_showMap, () => setState(() => _showMap = false)),
+        TextButton(
+          onPressed: () => setState(() => _showMap = true),
+          child: const Text('Kart'),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _showMap = false),
+          child: const Text('Liste'),
+        ),
       ],
-    );
-  }
-
-  Widget _toggleBtn(String label, bool active, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFF2356E8) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF2356E8).withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.white : const Color(0xFF172033),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
     );
   }
 }
 
-// ---------------- PREVIEW CARD ----------------
+// 🔥 Animated clickable counter (ripple + scale on press)
+class _CounterButton extends StatefulWidget {
+  final int count;
+  final VoidCallback onTap;
 
-class _MapPreviewCard extends StatelessWidget {
-  final Job job;
-  final bool isTaking;
-  final VoidCallback onClose;
-  final VoidCallback onOpen;
-  final VoidCallback? onTake;
-
-  const _MapPreviewCard({
-    required this.job,
-    required this.isTaking,
-    required this.onClose,
-    required this.onOpen,
-    required this.onTake,
+  const _CounterButton({
+    required this.count,
+    required this.onTap,
   });
 
   @override
+  State<_CounterButton> createState() => _CounterButtonState();
+}
+
+class _CounterButtonState extends State<_CounterButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            onTap: onOpen,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Liten preview-bilde-plate
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF3FB),
-                      borderRadius: BorderRadius.circular(14),
-                      image: (job.imageUrl != null && job.imageUrl!.isNotEmpty)
-                          ? DecorationImage(
-                              image: NetworkImage(job.imageUrl!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: (job.imageUrl == null || job.imageUrl!.isEmpty)
-                        ? const Icon(
-                            Icons.work_outline,
-                            color: Color(0xFF2356E8),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-
-                  // Tittel + info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                job.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                  color: Color(0xFF172033),
-                                ),
-                              ),
-                            ),
-                            // Lukk-knapp (erstatter auto-deselect)
-                            InkWell(
-                              onTap: onClose,
-                              borderRadius: BorderRadius.circular(20),
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(
-                                  Icons.close,
-                                  size: 18,
-                                  color: Color(0xFF6E7A90),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${job.locationName} · ${job.category}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF6E7A90),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(
-                              '${job.price} kr',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF18B7A6),
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _takeOrOpenButton(context),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _takeOrOpenButton(BuildContext context) {
-    if (onTake == null) {
-      return SizedBox(
-        height: 36,
-        child: OutlinedButton(
-          onPressed: onOpen,
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: const Text(
-            'Se oppdrag',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 36,
-      child: ElevatedButton(
-        onPressed: isTaking ? null : onTake,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF2356E8),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: isTaking
-            ? const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
+    return AnimatedScale(
+      scale: _pressed ? 0.94 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: Material(
+        color: const Color(0xFF2356E8).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          splashColor: const Color(0xFF2356E8).withOpacity(0.18),
+          highlightColor: const Color(0xFF2356E8).withOpacity(0.08),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.work_outline,
+                  size: 16,
+                  color: Color(0xFF2356E8),
                 ),
-              )
-            : const Text(
-                'Ta jobb',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
+                const SizedBox(width: 6),
+                Text(
+                  '${widget.count} oppdrag',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: Color(0xFF2356E8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
