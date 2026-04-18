@@ -1,4 +1,3 @@
-// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -36,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final appState = context.watch<AppState>();
     final jobs = appState.smartRankedJobs;
 
-    _buildMarkers(jobs, appState);
+    _buildMarkers(jobs);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FC),
@@ -50,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // 🔥 KART / LISTE
             Expanded(
-              child: _showMap ? _mapView(jobs, appState) : _listView(jobs, appState),
+              child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
 
             // 🔥 OPPDRAGSKORT UTENFOR MAP (VIKTIG)
@@ -58,16 +57,39 @@ class _HomeScreenState extends State<HomeScreen> {
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: JobCard(
-                    job: _selectedJob!,
-                    distanceText: appState.jobLocationLabel(_selectedJob!),
-                    onTap: () => _openJob(_selectedJob!),
-                    onTake: (_selectedJob!.status == JobStatus.open &&
-                           _selectedJob!.createdByUserId !=
-                               context.read<AppState>().currentUser.id)
-                        ? () => _takeAndOpen(_selectedJob!)
-                        : null,
-                    
+                  child: Stack(
+                    children: [
+                      JobCard(
+                        job: _selectedJob!,
+                        distanceText: _selectedJob!.locationName,
+                        onTap: () => _openJob(_selectedJob!),
+                        onTake: _selectedJob!.status == JobStatus.open
+                            ? () => _takeAndOpen(_selectedJob!)
+                            : null,
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Material(
+                          color: Colors.white,
+                          shape: const CircleBorder(),
+                          elevation: 2,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () =>
+                                setState(() => _selectedJob = null),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.close,
+                                size: 18,
+                                color: Color(0xFF172033),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -85,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------------- MAP ----------------
 
-  Widget _mapView(List<Job> jobs, AppState appState) {
+  Widget _mapView(List<Job> jobs) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: ClipRRect(
@@ -103,8 +125,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+  void _buildMarkers(List<Job> jobs) {
+    final appState = context.read<AppState>();
 
-  void _buildMarkers(List<Job> jobs, AppState appState) {
     _markers = jobs.map((job) {
       return Marker(
         markerId: MarkerId(job.id),
@@ -112,26 +135,26 @@ class _HomeScreenState extends State<HomeScreen> {
           appState.jobMarkerLat(job),
           appState.jobMarkerLng(job),
         ),
-        onTap: () {
-          final fresh =
-              context.read<AppState>().getJobById(job.id) ?? job;
+      onTap: () {
+        final fresh =
+            appState.getJobById(job.id) ?? job;
 
-          setState(() => _selectedJob = fresh);
-        },
-      );
-    }).toSet();
-  }
+        setState(() => _selectedJob = fresh);
+      },
+    );
+  }).toSet();
+}
 
   // ---------------- LIST ----------------
 
-  Widget _listView(List<Job> jobs, AppState appState) {
+  Widget _listView(List<Job> jobs) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: jobs
           .map(
             (job) => JobCard(
               job: job,
-              distanceText: appState.jobLocationLabel(job),
+              distanceText: job.locationName,
               onTap: () => _openJob(job),
               onTake: job.status == JobStatus.open
                   ? () => _takeAndOpen(job)
@@ -199,10 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          _CounterButton(
-            count: jobs.length,
-            onTap: () => setState(() => _showMap = false),
-          ),
         ],
       ),
     );
@@ -213,74 +232,20 @@ class _HomeScreenState extends State<HomeScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         TextButton(
-          onPressed: () => setState(() => _showMap = true),
+          onPressed: () => setState(() {
+            _showMap = true;
+            _selectedJob = null;
+          }),
           child: const Text('Kart'),
         ),
         TextButton(
-          onPressed: () => setState(() => _showMap = false),
+          onPressed: () => setState(() {
+            _showMap = false;
+            _selectedJob = null;
+          }),
           child: const Text('Liste'),
         ),
       ],
-    );
-  }
-}
-
-// 🔥 Animated clickable counter (ripple + scale on press)
-class _CounterButton extends StatefulWidget {
-  final int count;
-  final VoidCallback onTap;
-
-  const _CounterButton({
-    required this.count,
-    required this.onTap,
-  });
-
-  @override
-  State<_CounterButton> createState() => _CounterButtonState();
-}
-
-class _CounterButtonState extends State<_CounterButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedScale(
-      scale: _pressed ? 0.94 : 1.0,
-      duration: const Duration(milliseconds: 120),
-      curve: Curves.easeOut,
-      child: Material(
-        color: const Color(0xFF2356E8).withOpacity(0.08),
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: widget.onTap,
-          onHighlightChanged: (v) => setState(() => _pressed = v),
-          splashColor: const Color(0xFF2356E8).withOpacity(0.18),
-          highlightColor: const Color(0xFF2356E8).withOpacity(0.08),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.work_outline,
-                  size: 16,
-                  color: Color(0xFF2356E8),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${widget.count} oppdrag',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: Color(0xFF2356E8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

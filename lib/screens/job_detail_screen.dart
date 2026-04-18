@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
+import '../widgets/reserved_timer.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
 
@@ -109,6 +110,16 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
                 const SizedBox(height: 20),
                 Text('Status: ${job.status.name}'),
+
+                // -------- RESERVASJONS-NEDTELLING --------
+                if (job.status == JobStatus.reserved &&
+                    job.reservedUntil != null) ...[
+                  const SizedBox(height: 12),
+                  ReservedTimer(
+                    jobId: job.id,
+                    reservedUntil: job.reservedUntil!,
+                  ),
+                ],
               ],
             ),
           ),
@@ -162,10 +173,25 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 });
               }),
 
-            // -------- AVBRYT (NY LOGIKK) --------
+            // -------- AVBRYT / SLETT --------
+            // OPEN eier ser "Slett oppdrag" (direkte sletting).
+            // OPEN jobber har ingen arbeider ennå, så ikke noe to-parts flow.
+            // RESERVED/INPROGRESS ser "Avbryt oppdrag" (utløser riktig flow).
+            if (!_isLoading &&
+                isOwner &&
+                job.status == JobStatus.open)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _confirmDelete(job.id),
+                  child: const Text('Slett oppdrag'),
+                ),
+              ),
+
             if (!_isLoading &&
                 (isOwner || isWorker) &&
-                job.status != JobStatus.completed)
+                job.status != JobStatus.completed &&
+                job.status != JobStatus.open)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -263,6 +289,45 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         _reload(jobId);
       });
     }
+  }
+
+  Future<void> _confirmDelete(String jobId) async {
+    final appState = context.read<AppState>();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Slett oppdrag'),
+        content: const Text(
+          'Vil du slette oppdraget? Det er ikke reservert av noen '
+          'ennå, så det forsvinner helt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Nei'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Slett'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await _runAction(() async {
+      final ok = await appState.deleteOwnJob(jobId);
+      if (!mounted) return;
+      if (ok) {
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kunne ikke slette oppdraget.')),
+        );
+      }
+    });
   }
 
   // ---------------- HELPERS ----------------

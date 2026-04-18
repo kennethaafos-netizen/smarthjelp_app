@@ -359,6 +359,7 @@ class AppState extends ChangeNotifier {
     if (job.createdByUserId != _currentUser.id) return false;
     if (job.status != JobStatus.open) return false;
 
+    final original = job;
     final updated = job.copyWith(
       title: title,
       description: description,
@@ -376,11 +377,16 @@ class AppState extends ChangeNotifier {
       final saved = await _supabaseService.updateJob(updated);
       if (saved != null) {
         _replaceJobLocally(saved);
+        notifyListeners();
+        return true;
       }
+      _replaceJobLocally(original);
       notifyListeners();
-      return true;
+      return false;
     } catch (e) {
       debugPrint('updateOwnJob error: $e');
+      _replaceJobLocally(original);
+      notifyListeners();
       return false;
     }
   }
@@ -565,16 +571,12 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
+    // OPEN: ingen motpart ennå. Eier sletter bare oppdraget direkte —
+    // ikke noe to-parts avbrytelses-flow.
     if (job.status == JobStatus.open) {
-      final updated = job.copyWith(
-        status: JobStatus.open,
-        cancelRequestedByUserId: _currentUser.id,
-      );
-      await _saveJobUpdate(
-        updated,
-        systemMessage:
-            '${_currentUser.firstName} markerte oppdraget som avbrutt.',
-      );
+      if (isOwner) {
+        await deleteOwnJob(id);
+      }
       return;
     }
 
