@@ -1,3 +1,6 @@
+// FIX: Added preferredCategories to support future push-notification matching.
+// Existing fields, constructor signature, and copyWith semantics preserved.
+
 class UserProfile {
   final String id;
   final String firstName;
@@ -8,6 +11,7 @@ class UserProfile {
   final double rating;
   final int ratingCount;
   final bool pushNotificationsEnabled;
+  final List<String> preferredCategories;
 
   const UserProfile({
     required this.id,
@@ -19,6 +23,7 @@ class UserProfile {
     required this.rating,
     required this.ratingCount,
     required this.pushNotificationsEnabled,
+    this.preferredCategories = const [],
   });
 
   UserProfile copyWith({
@@ -31,6 +36,7 @@ class UserProfile {
     double? rating,
     int? ratingCount,
     bool? pushNotificationsEnabled,
+    List<String>? preferredCategories,
   }) {
     return UserProfile(
       id: id ?? this.id,
@@ -43,6 +49,7 @@ class UserProfile {
       ratingCount: ratingCount ?? this.ratingCount,
       pushNotificationsEnabled:
           pushNotificationsEnabled ?? this.pushNotificationsEnabled,
+      preferredCategories: preferredCategories ?? this.preferredCategories,
     );
   }
 }
