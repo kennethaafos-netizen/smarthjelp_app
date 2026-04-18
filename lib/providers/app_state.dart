@@ -281,7 +281,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> addJob({
+  Future<bool> addJob({
     required String title,
     required String description,
     required int price,
@@ -318,21 +318,30 @@ class AppState extends ChangeNotifier {
 
     notifyListeners();
 
+    bool savedOk = false;
+
     try {
       final saved = await _supabaseService.createJob(job);
 
-      if (imageUrls != null && imageUrls.isNotEmpty) {
-        await _supabaseService.addJobImages(jobId: job.id, urls: imageUrls);
-      }
-
       if (saved != null) {
         _replaceJobLocally(saved);
+        savedOk = true;
+
+        // ⚠️ VIKTIG: kun legg til bilder hvis jobben faktisk ble lagret.
+        // Ellers får vi FK-violation på job_images.job_id.
+        if (imageUrls != null && imageUrls.isNotEmpty) {
+          await _supabaseService.addJobImages(
+            jobId: saved.id,
+            urls: imageUrls,
+          );
+        }
       }
     } catch (e) {
       debugPrint('addJob error: $e');
     }
 
     notifyListeners();
+    return savedOk;
   }
 
   Future<bool> updateOwnJob({
@@ -832,9 +841,16 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  // 🔥 Gyldige UUID-er for seed-brukere. Supabase krever UUID-format
+  // på created_by_user_id / accepted_by_user_id — "1" og "2" feilet med
+  // "invalid input syntax for type uuid".
+  static const String _seedOwnerId = '00000000-0000-0000-0000-000000000001';
+  static const String _seedWorkerId = '00000000-0000-0000-0000-000000000002';
+  static const String _seedJobId = '00000000-0000-0000-0000-000000000010';
+
   void _seedUsers() {
     final owner = UserProfile(
-      id: '1',
+      id: _seedOwnerId,
       firstName: 'Anders',
       email: '',
       phone: '',
@@ -846,7 +862,7 @@ class AppState extends ChangeNotifier {
     );
 
     final worker = UserProfile(
-      id: '2',
+      id: _seedWorkerId,
       firstName: 'Kenneth',
       email: '',
       phone: '',
@@ -865,7 +881,7 @@ class AppState extends ChangeNotifier {
   List<Job> _buildSeedJobs() {
     return [
       Job(
-        id: '1',
+        id: _seedJobId,
         title: 'Bære ved',
         description: 'Trenger hjelp med å bære ved inn i boden.',
         price: 300,
@@ -873,7 +889,7 @@ class AppState extends ChangeNotifier {
         locationName: 'Skien',
         lat: 59.2096,
         lng: 9.6089,
-        createdByUserId: '1',
+        createdByUserId: _seedOwnerId,
         status: JobStatus.open,
         createdAt: DateTime.now(),
         viewCount: 0,

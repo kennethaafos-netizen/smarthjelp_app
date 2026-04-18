@@ -154,8 +154,8 @@ class MyJobsScreen extends StatelessWidget {
                     job.status == JobStatus.completed)
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () {
-                        appState.addJob(
+                      onPressed: () async {
+                        final ok = await appState.addJob(
                           title: job.title,
                           description: job.description,
                           price: job.price,
@@ -164,6 +164,16 @@ class MyJobsScreen extends StatelessWidget {
                           lat: job.lat,
                           lng: job.lng,
                           imageUrl: job.imageUrl,
+                        );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              ok
+                                  ? 'Oppdraget ble publisert på nytt.'
+                                  : 'Kunne ikke publisere oppdraget på nytt.',
+                            ),
+                          ),
                         );
                       },
                       child: const Text("Publiser igjen"),
