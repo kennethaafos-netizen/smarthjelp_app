@@ -1,8 +1,8 @@
-// lib/screens/job_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/job.dart';
+import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
@@ -30,12 +30,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     final images = appState.getImages(job.id);
 
-    // 🔥 EXACT vs APPROX (prepares "unlock address after accept")
-    final double viewLat =
-        isWorker ? job.visibleLatForReservedWorker : job.lat;
-    final double viewLng =
-        isWorker ? job.visibleLngForReservedWorker : job.lng;
-
     return Scaffold(
       appBar: AppBar(title: Text(job.title)),
       body: Column(
@@ -44,6 +38,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // -------- CANCEL BANNER (additiv UI — chat-meldinger uendret) --------
+                if (job.cancelRequestedByUserId != null &&
+                    (isOwner || isWorker))
+                  _CancelBanner(
+                    job: job,
+                    currentUser: currentUser,
+                    requester: appState
+                        .getUserById(job.cancelRequestedByUserId!),
+                    onApprove: () => _runAction(() async {
+                      await appState.approveCancel(job.id);
+                      _reload(job.id);
+                    }),
+                    onReject: () => _runAction(() async {
+                      await appState.rejectCancel(job.id);
+                      _reload(job.id);
+                    }),
+                    onWithdraw: () => _runAction(() async {
+                      await appState.withdrawCancelRequest(job.id);
+                      _reload(job.id);
+                    }),
+                  ),
+
                 Text(job.title,
                     style: const TextStyle(
                         fontSize: 22, fontWeight: FontWeight.bold)),
@@ -89,10 +105,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
                 const SizedBox(height: 20),
 
-                _locationSection(job, isWorker, viewLat, viewLng),
-
-                const SizedBox(height: 20),
-
                 _priceSection(job, isOwner),
 
                 const SizedBox(height: 20),
@@ -102,50 +114,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ),
 
           _actionButtons(job, isOwner, isWorker),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- STED ----------------
-
-  Widget _locationSection(
-    Job job,
-    bool isWorker,
-    double viewLat,
-    double viewLng,
-  ) {
-    final subtitle = isWorker
-        ? 'Eksakt sted synlig for deg'
-        : 'Omtrentlig sted før du tar oppdraget';
-
-    return Semantics(
-      label: 'Koordinater $viewLat, $viewLng',
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.place_outlined, size: 18, color: Color(0xFF2356E8)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  job.locationName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6E7A90),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -323,6 +291,135 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       child: ElevatedButton(
         onPressed: onTap,
         child: Text(text),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// 🔥 CANCEL BANNER (additiv UI — speiler AppState cancel-flyt)
+// ============================================================
+
+class _CancelBanner extends StatelessWidget {
+  final Job job;
+  final UserProfile currentUser;
+  final UserProfile? requester;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onWithdraw;
+
+  const _CancelBanner({
+    required this.job,
+    required this.currentUser,
+    required this.requester,
+    required this.onApprove,
+    required this.onReject,
+    required this.onWithdraw,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final requesterId = job.cancelRequestedByUserId;
+    if (requesterId == null) return const SizedBox.shrink();
+
+    final isMine = requesterId == currentUser.id;
+    final requesterName = requester?.firstName ?? 'Den andre parten';
+
+    final bg = isMine
+        ? const Color(0xFFFFF4E5)
+        : const Color(0xFFFFEBEE);
+    final border = isMine ? Colors.orange : Colors.red;
+    final icon = isMine ? Icons.hourglass_top : Icons.report_gmailerrorred;
+
+    final title = isMine
+        ? 'Du har bedt om å avbryte oppdraget'
+        : '$requesterName har bedt om å avbryte oppdraget';
+
+    final subtitle = isMine
+        ? 'Venter på at den andre parten godkjenner. Oppdraget fortsetter inntil begge parter har godkjent.'
+        : 'Begge parter må godkjenne før oppdraget kanselleres. Velg om du vil godkjenne eller avslå forespørselen.';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border.withOpacity(0.35), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: border, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: border.shade900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF4A4A4A),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (isMine)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onWithdraw,
+                icon: const Icon(Icons.undo),
+                label: const Text('Trekk tilbake forespørselen'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade900,
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: onApprove,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Godkjenn'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onReject,
+                    icon: const Icon(Icons.close),
+                    label: const Text('Avslå'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
