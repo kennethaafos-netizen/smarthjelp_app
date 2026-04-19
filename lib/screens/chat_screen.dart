@@ -5,13 +5,16 @@ import 'package:provider/provider.dart';
 
 import '../models/chat_message.dart';
 import '../models/job.dart';
+import '../models/user_profile.dart';
 import '../providers/app_state.dart';
+import 'job_detail_screen.dart';
 
 const Color _primary = Color(0xFF2356E8);
 const Color _accent = Color(0xFF18B7A6);
 const Color _bg = Color(0xFFF4F7FC);
 const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
+const Color _activeGreen = Color(0xFF0EA877);
 
 class ChatScreen extends StatefulWidget {
   final Job job;
@@ -35,78 +38,24 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final messages = appState.getMessagesForJob(widget.job.id);
     final currentUser = appState.currentUser;
+    final job = appState.getJobById(widget.job.id) ?? widget.job;
+    final messages = appState.getMessagesForJob(job.id);
+
+    // Motparten i samtalen – eier hvis jeg tok jobben, ellers worker.
+    final counterpartyId = job.createdByUserId == currentUser.id
+        ? job.acceptedByUserId
+        : job.createdByUserId;
+    final counterparty = counterpartyId != null
+        ? appState.getUserById(counterpartyId)
+        : null;
 
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: _textPrimary),
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4F7BFF), _accent],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                widget.job.title.isNotEmpty
-                    ? widget.job.title[0].toUpperCase()
-                    : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.job.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textPrimary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  Text(
-                    widget.job.locationName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textMuted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      appBar: _appBar(counterparty),
       body: Column(
         children: [
+          _jobSummaryCard(job),
           Expanded(
             child: messages.isEmpty
                 ? _emptyChat()
@@ -138,72 +87,289 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-          if (_replyTo != null)
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border(
-                  left: BorderSide(color: _primary, width: 3),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.reply_rounded,
-                      size: 18, color: _primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Svarer på',
-                          style: TextStyle(
-                            color: _primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _replyTo!.text,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _textPrimary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.close_rounded,
-                        color: _textMuted, size: 20),
-                    onPressed: () => setState(() => _replyTo = null),
-                  ),
-                ],
-              ),
-            ),
+          if (_replyTo != null) _replyPreview(),
           _inputBar(),
         ],
       ),
     );
   }
+
+  // =====================================================================
+  // APP BAR
+  // =====================================================================
+
+  PreferredSizeWidget _appBar(UserProfile? counterparty) {
+    final name = counterparty?.firstName ?? widget.job.title;
+    final rating = counterparty?.rating;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    return AppBar(
+      backgroundColor: _bg,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      iconTheme: const IconThemeData(color: _textPrimary),
+      titleSpacing: 0,
+      title: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF4F7BFF), _accent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _primary.withOpacity(0.18),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _activeGreen,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _bg, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    if (rating != null) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.star_rounded,
+                          color: Color(0xFFFFB020), size: 14),
+                      const SizedBox(width: 2),
+                      Text(
+                        rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 1),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: _activeGreen,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'Aktiv nå',
+                      style: TextStyle(
+                        color: _activeGreen,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            elevation: 0,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {},
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.more_horiz_rounded,
+                    color: _textPrimary, size: 20),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // =====================================================================
+  // JOB SUMMARY (sticky under app bar)
+  // =====================================================================
+
+  Widget _jobSummaryCard(Job job) {
+    final palette = _pastelForCategory(job.category);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => JobDetailScreen(job: job),
+              ),
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [palette.start, palette.end],
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      palette.icon,
+                      color: Colors.white.withOpacity(0.9),
+                      size: 22,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'OM OPPDRAGET',
+                        style: TextStyle(
+                          color: _primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 10.5,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        job.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${job.price}',
+                        style: const TextStyle(
+                          color: _primary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const TextSpan(
+                        text: ' kr',
+                        style: TextStyle(
+                          color: _primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right_rounded,
+                    color: _textMuted, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =====================================================================
+  // EMPTY STATE
+  // =====================================================================
 
   Widget _emptyChat() {
     return Center(
@@ -253,6 +419,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // =====================================================================
+  // BUBBLES
+  // =====================================================================
+
   Widget _buildBubble(ChatMessage msg, bool isMe, String name) {
     final time = DateFormat.Hm().format(msg.createdAt);
     final isSystem = msg.senderId == 'system';
@@ -291,9 +461,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    final bubbleColor = isMe ? _primary : Colors.white;
-    final textColor = isMe ? Colors.white : _textPrimary;
     final timeColor = isMe ? Colors.white.withOpacity(0.85) : _textMuted;
+    final textColor = isMe ? Colors.white : _textPrimary;
     final borderRadius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -354,13 +523,22 @@ class _ChatScreenState extends State<ChatScreen> {
                       horizontal: 14, vertical: 10),
                   constraints: const BoxConstraints(maxWidth: 280),
                   decoration: BoxDecoration(
-                    color: bubbleColor,
+                    gradient: isMe
+                        ? const LinearGradient(
+                            colors: [Color(0xFF3E6BFF), _primary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isMe ? null : Colors.white,
                     borderRadius: borderRadius,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(isMe ? 0.12 : 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
+                        color: isMe
+                            ? _primary.withOpacity(0.24)
+                            : Colors.black.withOpacity(0.05),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
@@ -370,7 +548,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (msg.replyToText != null &&
                           msg.replyToText!.isNotEmpty)
                         Container(
-                          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                          padding:
+                              const EdgeInsets.fromLTRB(10, 6, 10, 6),
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
                             color: isMe
@@ -447,6 +626,14 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          if (isMe) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.done_all_rounded,
+                              size: 13,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -460,6 +647,75 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // =====================================================================
+  // REPLY PREVIEW
+  // =====================================================================
+
+  Widget _replyPreview() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: const Border(
+          left: BorderSide(color: _primary, width: 3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.reply_rounded, size: 18, color: _primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Svarer på',
+                  style: TextStyle(
+                    color: _primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _replyTo!.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.close_rounded,
+                color: _textMuted, size: 20),
+            onPressed: () => setState(() => _replyTo = null),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =====================================================================
+  // INPUT BAR
+  // =====================================================================
+
   Widget _inputBar() {
     return SafeArea(
       child: Container(
@@ -467,6 +723,32 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: const BoxDecoration(color: _bg),
         child: Row(
           children: [
+            Material(
+              color: Colors.white,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => _showAttachmentPlaceholder(),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.add_rounded,
+                      color: _primary, size: 22),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -480,42 +762,57 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: _ctrl,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _handleSend(),
-                  style: const TextStyle(
-                    color: _textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: 'Skriv en melding…',
-                    hintStyle: TextStyle(
-                      color: _textMuted,
-                      fontWeight: FontWeight.w500,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _handleSend(),
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Skriv en melding…',
+                          hintStyle: TextStyle(
+                            color: _textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 14,
+                          ),
+                        ),
+                      ),
                     ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
+                    IconButton(
+                      onPressed: () => _showAttachmentPlaceholder(),
+                      icon: const Icon(Icons.camera_alt_outlined,
+                          color: _textMuted, size: 20),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Material(
-              color: _primary,
-              borderRadius: BorderRadius.circular(22),
+              color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(23),
                 onTap: _handleSend,
                 child: Container(
                   width: 46,
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3E6BFF), _primary],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(23),
                     boxShadow: [
                       BoxShadow(
                         color: _primary.withOpacity(0.35),
@@ -530,6 +827,22 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showAttachmentPlaceholder() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _textPrimary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        content: const Text(
+          'Bildedeling kommer snart.',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -554,4 +867,70 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _replyTo = null);
     }
   }
+
+  // =====================================================================
+  // PASTELL (matcher JobCard / JobDetail)
+  // =====================================================================
+
+  _CategoryPalette _pastelForCategory(String category) {
+    final key = category.toLowerCase().trim();
+    switch (key) {
+      case 'flytting':
+        return const _CategoryPalette(
+          start: Color(0xFFFFD6B8),
+          end: Color(0xFFFFBFA0),
+          icon: Icons.local_shipping_rounded,
+        );
+      case 'rengjøring':
+      case 'rengjoring':
+        return const _CategoryPalette(
+          start: Color(0xFFE0DBFF),
+          end: Color(0xFFC9BEFF),
+          icon: Icons.cleaning_services_rounded,
+        );
+      case 'hage':
+        return const _CategoryPalette(
+          start: Color(0xFFC5EBD3),
+          end: Color(0xFF9FDCB6),
+          icon: Icons.yard_rounded,
+        );
+      case 'montering':
+        return const _CategoryPalette(
+          start: Color(0xFFCDEEE8),
+          end: Color(0xFFA2DDD3),
+          icon: Icons.handyman_rounded,
+        );
+      case 'bygg':
+      case 'handyman':
+        return const _CategoryPalette(
+          start: Color(0xFFFFE7B5),
+          end: Color(0xFFFFD38A),
+          icon: Icons.construction_rounded,
+        );
+      case 'transport':
+        return const _CategoryPalette(
+          start: Color(0xFFD0E2FF),
+          end: Color(0xFFA7C5FF),
+          icon: Icons.directions_car_rounded,
+        );
+      default:
+        return const _CategoryPalette(
+          start: Color(0xFFDCE7FF),
+          end: Color(0xFFB8CCFF),
+          icon: Icons.work_rounded,
+        );
+    }
+  }
+}
+
+class _CategoryPalette {
+  final Color start;
+  final Color end;
+  final IconData icon;
+
+  const _CategoryPalette({
+    required this.start,
+    required this.end,
+    required this.icon,
+  });
 }

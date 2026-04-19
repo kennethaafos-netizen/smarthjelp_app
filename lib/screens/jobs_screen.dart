@@ -32,6 +32,12 @@ class JobsScreen extends StatefulWidget {
 class _JobsScreenState extends State<JobsScreen> {
   JobSortOption _sort = JobSortOption.newest;
   bool _showOnlyOpen = false;
+  int _activeTab = 0; // 0=Alle, 1=Mine, 2=Tatt
+
+  final ScrollController _scrollCtrl = ScrollController();
+  final GlobalKey _allKey = GlobalKey();
+  final GlobalKey _mineKey = GlobalKey();
+  final GlobalKey _takenKey = GlobalKey();
 
   @override
   void initState() {
@@ -39,6 +45,24 @@ class _JobsScreenState extends State<JobsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AppState>().ensureJobsLoaded();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _scrollTo(GlobalKey key, int tabIndex) {
+    setState(() => _activeTab = tabIndex);
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      alignment: 0.02,
+    );
   }
 
   @override
@@ -85,173 +109,315 @@ class _JobsScreenState extends State<JobsScreen> {
       ),
       body: appState.isLoadingJobs && !appState.hasLoadedJobs
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: appState.reloadJobs,
-              color: _primary,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                children: [
-                  _topControls(context),
-                  const SizedBox(height: 22),
-                  _sectionHeader('Alle oppdrag', Icons.explore_outlined,
-                      count: allJobs.length),
-                  const SizedBox(height: 12),
-                  if (allJobs.isEmpty)
-                    _emptyBox('Ingen oppdrag matcher filtreringen akkurat nå.')
-                  else
-                    ...allJobs.map(
-                      (job) => Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: JobCard(
-                          job: job,
-                          distanceText: job.locationName,
-                          onTap: () => _openJob(context, job),
-                          onTake: (job.status == JobStatus.open &&
-                                  job.createdByUserId != currentUser.id)
-                              ? () async {
-                                  final ok = await context
-                                      .read<AppState>()
-                                      .reserveJob(job.id);
+          : Column(
+              children: [
+                _tabPillRow(
+                  allCount: allJobs.length,
+                  mineCount: myPosted.length,
+                  takenCount: myTaken.length,
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: appState.reloadJobs,
+                    color: _primary,
+                    child: ListView(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                      children: [
+                        _topControls(context),
+                        const SizedBox(height: 22),
+                        Container(
+                          key: _allKey,
+                          child: _sectionHeader(
+                            'Alle oppdrag',
+                            Icons.explore_outlined,
+                            count: allJobs.length,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (allJobs.isEmpty)
+                          _emptyBox('Ingen oppdrag matcher filtreringen akkurat nå.')
+                        else
+                          ...allJobs.map(
+                            (job) => Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: JobCard(
+                                job: job,
+                                distanceText: job.locationName,
+                                onTap: () => _openJob(context, job),
+                                onTake: (job.status == JobStatus.open &&
+                                        job.createdByUserId != currentUser.id)
+                                    ? () async {
+                                        final ok = await context
+                                            .read<AppState>()
+                                            .reserveJob(job.id);
 
-                                  if (!context.mounted) return;
+                                        if (!context.mounted) return;
 
-                                  if (!ok) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Kunne ikke reservere oppdraget.',
+                                        if (!ok) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Kunne ikke reservere oppdraget.',
+                                              ),
+                                            ),
+                                          );
+                                          return;
+                                        }
+
+                                        final refreshed = context
+                                            .read<AppState>()
+                                            .getJobById(job.id);
+                                        if (refreshed != null && context.mounted) {
+                                          _openJob(context, refreshed);
+                                        }
+                                      }
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 26),
+                        Container(
+                          key: _mineKey,
+                          child: _sectionHeader(
+                            'Mine oppdrag',
+                            Icons.upload_rounded,
+                            count: myPosted.length,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (myPosted.isEmpty)
+                          _emptyBox('Du har ikke lagt ut noen oppdrag enda.')
+                        else
+                          ...myPosted.map(
+                            (job) => Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: Column(
+                                children: [
+                                  JobCard(
+                                    job: job,
+                                    distanceText: job.locationName,
+                                    onTap: () => _openJob(context, job),
+                                  ),
+                                  if (job.status == JobStatus.reserved &&
+                                      job.reservedUntil != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: ReservedTimer(
+                                        jobId: job.id,
+                                        reservedUntil: job.reservedUntil!,
+                                      ),
+                                    ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: job.status == JobStatus.open
+                                              ? () => _showEditDialog(context, job)
+                                              : null,
+                                          icon: const Icon(Icons.edit_outlined,
+                                              size: 18),
+                                          label: const Text('Rediger'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: _primary,
+                                            side: BorderSide(
+                                                color: _primary.withOpacity(0.35)),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                            textStyle: const TextStyle(
+                                                fontWeight: FontWeight.w700),
+                                          ),
                                         ),
                                       ),
-                                    );
-                                    return;
-                                  }
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: job.status == JobStatus.open
+                                              ? () => _confirmDelete(context, job)
+                                              : null,
+                                          icon: const Icon(Icons.delete_outline,
+                                              size: 18),
+                                          label: const Text('Slett'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor:
+                                                const Color(0xFFDC2626),
+                                            side: const BorderSide(
+                                                color: Color(0x55DC2626)),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                            textStyle: const TextStyle(
+                                                fontWeight: FontWeight.w700),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 26),
+                        Container(
+                          key: _takenKey,
+                          child: _sectionHeader(
+                            'Oppdrag jeg har tatt',
+                            Icons.download_rounded,
+                            count: myTaken.length,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (myTaken.isEmpty)
+                          _emptyBox('Du har ikke tatt noen oppdrag enda.')
+                        else
+                          ...myTaken.map(
+                            (job) => Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: Column(
+                                children: [
+                                  JobCard(
+                                    job: job,
+                                    distanceText: job.locationName,
+                                    onTap: () => _openJob(context, job),
+                                  ),
+                                  if (job.status == JobStatus.reserved &&
+                                      job.reservedUntil != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: ReservedTimer(
+                                        jobId: job.id,
+                                        reservedUntil: job.reservedUntil!,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 
-                                  final refreshed = context
-                                      .read<AppState>()
-                                      .getJobById(job.id);
-                                  if (refreshed != null && context.mounted) {
-                                    _openJob(context, refreshed);
-                                  }
-                                }
-                              : null,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 26),
-                  _sectionHeader('Mine oppdrag', Icons.upload_rounded,
-                      count: myPosted.length),
-                  const SizedBox(height: 12),
-                  if (myPosted.isEmpty)
-                    _emptyBox('Du har ikke lagt ut noen oppdrag enda.')
-                  else
-                    ...myPosted.map(
-                      (job) => Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Column(
-                          children: [
-                            JobCard(
-                              job: job,
-                              distanceText: job.locationName,
-                              onTap: () => _openJob(context, job),
-                            ),
-                            if (job.status == JobStatus.reserved &&
-                                job.reservedUntil != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 10),
-                                child: ReservedTimer(
-                                  jobId: job.id,
-                                  reservedUntil: job.reservedUntil!,
-                                ),
-                              ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: job.status == JobStatus.open
-                                        ? () => _showEditDialog(context, job)
-                                        : null,
-                                    icon: const Icon(Icons.edit_outlined,
-                                        size: 18),
-                                    label: const Text('Rediger'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: _primary,
-                                      side: BorderSide(
-                                          color: _primary.withOpacity(0.35)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      textStyle: const TextStyle(
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: job.status == JobStatus.open
-                                        ? () => _confirmDelete(context, job)
-                                        : null,
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 18),
-                                    label: const Text('Slett'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor:
-                                          const Color(0xFFDC2626),
-                                      side: const BorderSide(
-                                          color: Color(0x55DC2626)),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      textStyle: const TextStyle(
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 26),
-                  _sectionHeader(
-                      'Oppdrag jeg har tatt', Icons.download_rounded,
-                      count: myTaken.length),
-                  const SizedBox(height: 12),
-                  if (myTaken.isEmpty)
-                    _emptyBox('Du har ikke tatt noen oppdrag enda.')
-                  else
-                    ...myTaken.map(
-                      (job) => Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Column(
-                          children: [
-                            JobCard(
-                              job: job,
-                              distanceText: job.locationName,
-                              onTap: () => _openJob(context, job),
-                            ),
-                            if (job.status == JobStatus.reserved &&
-                                job.reservedUntil != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 10),
-                                child: ReservedTimer(
-                                  jobId: job.id,
-                                  reservedUntil: job.reservedUntil!,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
+  // ---------- TAB PILL ROW ----------
+  Widget _tabPillRow({
+    required int allCount,
+    required int mineCount,
+    required int takenCount,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: SizedBox(
+        height: 42,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            _tabPill(
+              label: 'Alle oppdrag',
+              count: allCount,
+              active: _activeTab == 0,
+              onTap: () => _scrollTo(_allKey, 0),
+            ),
+            const SizedBox(width: 8),
+            _tabPill(
+              label: 'Mine',
+              count: mineCount,
+              active: _activeTab == 1,
+              onTap: () => _scrollTo(_mineKey, 1),
+            ),
+            const SizedBox(width: 8),
+            _tabPill(
+              label: 'Tatt',
+              count: takenCount,
+              active: _activeTab == 2,
+              onTap: () => _scrollTo(_takenKey, 2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabPill({
+    required String label,
+    required int count,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: active ? _primary : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active ? _primary : _textMuted.withOpacity(0.18),
+            width: 1.1,
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: _primary.withOpacity(0.24),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
                 ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                color: active ? Colors.white : _textPrimary,
               ),
             ),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: active
+                    ? Colors.white.withOpacity(0.22)
+                    : _primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11.5,
+                  color: active ? Colors.white : _primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -414,6 +580,19 @@ class _JobsScreenState extends State<JobsScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  // Kept for backward compatibility; not used after upgrade.
+  // ignore: unused_element
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+        color: _textPrimary,
+      ),
     );
   }
 

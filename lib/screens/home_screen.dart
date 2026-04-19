@@ -23,11 +23,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
+  // Lokal kategori-filter state (ikke lagret i AppState)
+  String? _selectedCategory; // null = Alle
+
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
   static const Color _bg = Color(0xFFF4F7FC);
   static const Color _textPrimary = Color(0xFF172033);
   static const Color _textMuted = Color(0xFF6E7A90);
+
+  static const List<_CategoryOption> _categories = [
+    _CategoryOption('Alle', Icons.apps_rounded),
+    _CategoryOption('Flytting', Icons.local_shipping_outlined),
+    _CategoryOption('Rengjøring', Icons.cleaning_services_outlined),
+    _CategoryOption('Hage', Icons.grass_outlined),
+    _CategoryOption('Montering', Icons.handyman_outlined),
+    _CategoryOption('Bygg', Icons.construction_outlined),
+    _CategoryOption('Transport', Icons.directions_car_filled_outlined),
+  ];
 
   @override
   void initState() {
@@ -40,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final jobs = appState.smartRankedJobs;
+    final allJobs = appState.smartRankedJobs;
+    final jobs = _applyCategoryFilter(allJobs);
 
     _buildMarkers(appState, jobs);
 
@@ -52,10 +66,16 @@ class _HomeScreenState extends State<HomeScreen> {
             _header(context, jobs),
             const SizedBox(height: 8),
             _segmentedToggle(),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
+            _categoryChipsRow(),
+            const SizedBox(height: 12),
+
+            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
+
+            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -64,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _previewCard(_selectedJob!),
                 ),
               ),
+
             if (_isTakingJob)
               const Padding(
                 padding: EdgeInsets.only(bottom: 20),
@@ -74,6 +95,210 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ---------------- CATEGORY FILTER ----------------
+
+  List<Job> _applyCategoryFilter(List<Job> jobs) {
+    if (_selectedCategory == null) return jobs;
+    final needle = _selectedCategory!.toLowerCase();
+    return jobs.where((j) => j.category.toLowerCase() == needle).toList();
+  }
+
+  Widget _categoryChipsRow() {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _categories.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          if (index == _categories.length) {
+            return _layersMiniButton();
+          }
+          final opt = _categories[index];
+          final isAll = opt.label == 'Alle';
+          final active = isAll
+              ? _selectedCategory == null
+              : _selectedCategory == opt.label;
+          return _categoryChip(
+            label: opt.label,
+            icon: opt.icon,
+            active: active,
+            onTap: () => setState(() {
+              _selectedCategory = isAll ? null : opt.label;
+              _selectedJob = null;
+            }),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _categoryChip({
+    required String label,
+    required IconData icon,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: active ? _primary : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active ? _primary : _textMuted.withOpacity(0.18),
+            width: 1.1,
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: _primary.withOpacity(0.22),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: active ? Colors.white : _textPrimary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                color: active ? Colors.white : _textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _layersMiniButton() {
+    return GestureDetector(
+      onTap: () => _showMoreFiltersSheet(),
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _textMuted.withOpacity(0.18),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.tune_rounded,
+          size: 18,
+          color: _textPrimary,
+        ),
+      ),
+    );
+  }
+
+  void _showMoreFiltersSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _textMuted.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Flere filtre',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: _textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Sortering og avanserte filtre kommer snart.',
+                  style: TextStyle(
+                    color: _textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------- PREVIEW CARD ----------------
 
   Widget _previewCard(Job job) {
     return Container(
@@ -125,6 +350,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------- MAP ----------------
+
   Widget _mapView(List<Job> jobs) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -165,17 +392,22 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: () {
           final fresh =
               context.read<AppState>().getJobById(job.id) ?? job;
+
           setState(() => _selectedJob = fresh);
         },
       );
     }).toSet();
   }
 
+  // ---------------- LIST ----------------
+
   Widget _listView(List<Job> jobs) {
     if (jobs.isEmpty) {
       return _emptyState(
         icon: Icons.travel_explore_outlined,
-        title: 'Ingen oppdrag i nærheten',
+        title: _selectedCategory == null
+            ? 'Ingen oppdrag i nærheten'
+            : 'Ingen oppdrag i ${_selectedCategory!}',
         subtitle: 'Vi varsler deg når noe dukker opp.',
       );
     }
@@ -244,6 +476,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------- ACTIONS ----------------
+
   Future<void> _takeAndOpen(Job job) async {
     if (_isTakingJob) return;
 
@@ -284,6 +518,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------- UI HEADER ----------------
+
   Widget _header(BuildContext context, List<Job> jobs) {
     final user = context.read<AppState>().currentUser;
     final count = jobs.length;
@@ -320,7 +556,61 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 12),
+          _notificationBell(),
+          const SizedBox(width: 10),
           _avatar(user.firstName),
+        ],
+      ),
+    );
+  }
+
+  Widget _notificationBell() {
+    return GestureDetector(
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ingen nye varsler.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.notifications_none_rounded,
+              color: _textPrimary,
+              size: 22,
+            ),
+          ),
+          Positioned(
+            top: 10,
+            right: 11,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -382,6 +672,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ---------------- SEGMENTED TOGGLE ----------------
 
   Widget _segmentedToggle() {
     return Padding(
@@ -485,4 +777,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (hour < 22) return 'God kveld';
     return 'God natt';
   }
+}
+
+class _CategoryOption {
+  final String label;
+  final IconData icon;
+  const _CategoryOption(this.label, this.icon);
 }
