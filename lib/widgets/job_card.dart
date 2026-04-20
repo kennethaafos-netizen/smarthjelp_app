@@ -259,7 +259,7 @@ class _JobCardState extends State<JobCard> {
         // Pris-badge (prominent)
         Positioned(
           right: 12,
-          top: 12,
+          top: 50,
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 12,
