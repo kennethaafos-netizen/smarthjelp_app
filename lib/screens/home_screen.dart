@@ -23,12 +23,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  String? _selectedCategory;
+  // Lokal kategori-filter state (ikke lagret i AppState)
+  String? _selectedCategory; // null = Alle
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
   static const Color _bg = Color(0xFFF4F7FC);
-  static const Color _textPrimary = Color(0xFF172033);
+  static const Color _textPrimary = Color(0xFF0F1E3A);
   static const Color _textMuted = Color(0xFF6E7A90);
 
   static const List<_CategoryOption> _categories = [
@@ -62,15 +63,19 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _header(context, jobs, appState),
+            _header(context, jobs, appState.hasUnreadNotifications),
             const SizedBox(height: 8),
             _segmentedToggle(),
             const SizedBox(height: 12),
             _categoryChipsRow(),
             const SizedBox(height: 12),
+
+            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
+
+            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -79,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _previewCard(_selectedJob!),
                 ),
               ),
+
             if (_isTakingJob)
               const Padding(
                 padding: EdgeInsets.only(bottom: 20),
@@ -89,6 +95,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ---------------- CATEGORY FILTER ----------------
 
   List<Job> _applyCategoryFilter(List<Job> jobs) {
     if (_selectedCategory == null) return jobs;
@@ -102,9 +110,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _categories.length,
+        itemCount: _categories.length + 1,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
+          if (index == _categories.length) {
+            return _layersMiniButton();
+          }
           final opt = _categories[index];
           final isAll = opt.label == 'Alle';
           final active = isAll
@@ -143,26 +154,15 @@ class _HomeScreenState extends State<HomeScreen> {
             color: active ? _primary : _textMuted.withOpacity(0.18),
             width: 1.1,
           ),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: _primary.withOpacity(0.22),
-                    blurRadius: 12,
-                    offset: const Offset(0, 5),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 15, color: active ? Colors.white : _textPrimary),
+            Icon(
+              icon,
+              size: 15,
+              color: active ? Colors.white : _textPrimary,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -178,6 +178,107 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _layersMiniButton() {
+    return GestureDetector(
+      onTap: () => _showMoreFiltersSheet(),
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _textMuted.withOpacity(0.18),
+            width: 1.1,
+          ),
+        ),
+        child: const Icon(
+          Icons.tune_rounded,
+          size: 18,
+          color: _textPrimary,
+        ),
+      ),
+    );
+  }
+
+  void _showMoreFiltersSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _textMuted.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Flere filtre',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: _textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Sortering og avanserte filtre kommer snart.',
+                  style: TextStyle(
+                    color: _textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------- PREVIEW CARD ----------------
+
   Widget _previewCard(Job job) {
     return Container(
       decoration: BoxDecoration(
@@ -185,9 +286,9 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -197,7 +298,9 @@ class _HomeScreenState extends State<HomeScreen> {
             job: job,
             distanceText: job.locationName,
             onTap: () => _openJob(job),
-            onTake: job.status == JobStatus.open ? () => _takeAndOpen(job) : null,
+            onTake: job.status == JobStatus.open
+                ? () => _takeAndOpen(job)
+                : null,
           ),
           Positioned(
             top: 10,
@@ -205,14 +308,18 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Material(
               color: Colors.white,
               shape: const CircleBorder(),
-              elevation: 3,
-              shadowColor: Colors.black.withOpacity(0.15),
+              elevation: 2,
+              shadowColor: Colors.black.withOpacity(0.10),
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () => setState(() => _selectedJob = null),
                 child: const Padding(
                   padding: EdgeInsets.all(7),
-                  child: Icon(Icons.close_rounded, size: 18, color: _textPrimary),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: _textPrimary,
+                  ),
                 ),
               ),
             ),
@@ -222,6 +329,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------- MAP ----------------
+
   Widget _mapView(List<Job> jobs) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -229,9 +338,9 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -260,12 +369,16 @@ class _HomeScreenState extends State<HomeScreen> {
           appState.jobMarkerLng(job),
         ),
         onTap: () {
-          final fresh = context.read<AppState>().getJobById(job.id) ?? job;
+          final fresh =
+              context.read<AppState>().getJobById(job.id) ?? job;
+
           setState(() => _selectedJob = fresh);
         },
       );
     }).toSet();
   }
+
+  // ---------------- LIST ----------------
 
   Widget _listView(List<Job> jobs) {
     if (jobs.isEmpty) {
@@ -288,8 +401,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 job: job,
                 distanceText: job.locationName,
                 onTap: () => _openJob(job),
-                onTake:
-                    job.status == JobStatus.open ? () => _takeAndOpen(job) : null,
+                onTake: job.status == JobStatus.open
+                    ? () => _takeAndOpen(job)
+                    : null,
               ),
             ),
           )
@@ -341,6 +455,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ---------------- ACTIONS ----------------
+
   Future<void> _takeAndOpen(Job job) async {
     if (_isTakingJob) return;
 
@@ -364,7 +480,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final updated = appState.getJobById(job.id);
-    if (updated != null) _openJob(updated);
+
+    if (updated != null) {
+      _openJob(updated);
+    }
 
     if (mounted) setState(() => _isTakingJob = false);
   }
@@ -372,22 +491,25 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openJob(Job job) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => JobDetailScreen(job: job)),
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(job: job),
+      ),
     );
   }
 
   void _openNotifications() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+      MaterialPageRoute(
+        builder: (_) => const NotificationScreen(),
+      ),
     );
   }
 
-  void _goToProfile() => widget.onNavigate?.call(4);
-  void _goToJobs() => widget.onNavigate?.call(1);
+  // ---------------- UI HEADER ----------------
 
-  Widget _header(BuildContext context, List<Job> jobs, AppState appState) {
-    final user = appState.currentUser;
+  Widget _header(BuildContext context, List<Job> jobs, bool hasUnread) {
+    final user = context.read<AppState>().currentUser;
     final count = jobs.length;
 
     return Padding(
@@ -409,8 +531,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 2),
                 Text(
                   user.firstName.isEmpty ? 'Velkommen' : user.firstName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -424,7 +544,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          _notificationBell(hasUnread: appState.hasUnreadNotifications),
+          _notificationBell(hasUnread),
           const SizedBox(width: 10),
           _avatar(user.firstName),
         ],
@@ -432,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _notificationBell({required bool hasUnread}) {
+  Widget _notificationBell(bool hasUnread) {
     return GestureDetector(
       onTap: _openNotifications,
       child: Stack(
@@ -445,18 +565,13 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              border: Border.all(
+                color: _textMuted.withOpacity(0.14),
+                width: 1,
+              ),
             ),
-            child: Icon(
-              hasUnread
-                  ? Icons.notifications_rounded
-                  : Icons.notifications_none_rounded,
+            child: const Icon(
+              Icons.notifications_none_rounded,
               color: _textPrimary,
               size: 22,
             ),
@@ -482,72 +597,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _avatar(String name) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return GestureDetector(
-      onTap: _goToProfile,
-      child: Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF4F7BFF), _accent],
-          ),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: _primary.withOpacity(0.25),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          initial,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: const BoxDecoration(
+        color: _primary,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
         ),
       ),
     );
   }
 
   Widget _countPill(int count) {
-    return GestureDetector(
-      onTap: _goToJobs,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: _accent.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.bolt_rounded, size: 14, color: _accent),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                count == 1
-                    ? '1 oppdrag tilgjengelig'
-                    : '$count oppdrag tilgjengelig',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _accent,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _accent.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bolt_rounded, size: 14, color: _accent),
+          const SizedBox(width: 6),
+          Text(
+            count == 1
+                ? '1 oppdrag tilgjengelig'
+                : '$count oppdrag tilgjengelig',
+            style: const TextStyle(
+              color: _accent,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
             ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, size: 14, color: _accent),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+
+  // ---------------- SEGMENTED TOGGLE ----------------
 
   Widget _segmentedToggle() {
     return Padding(
@@ -558,13 +654,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: const Color(0xFFE4E9F2), width: 1),
         ),
         child: Row(
           children: [
@@ -608,21 +698,16 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: active ? _primary : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
-            boxShadow: active
-                ? [
-                    BoxShadow(
-                      color: _primary.withOpacity(0.25),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : const [],
           ),
           alignment: Alignment.center,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: active ? Colors.white : _textMuted),
+              Icon(
+                icon,
+                size: 16,
+                color: active ? Colors.white : _textMuted,
+              ),
               const SizedBox(width: 6),
               Text(
                 label,

@@ -1,4 +1,3 @@
-// UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -32,8 +31,11 @@ class _JobCardState extends State<JobCard> {
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
-  static const Color _textPrimary = Color(0xFF172033);
+  static const Color _warning = Color(0xFFE08A00);
+  static const Color _safeGreen = Color(0xFF0EA877);
+  static const Color _textPrimary = Color(0xFF0F1E3A);
   static const Color _textMuted = Color(0xFF6E7A90);
+  static const Color _borderSoft = Color(0xFFE4E9F2);
 
   @override
   Widget build(BuildContext context) {
@@ -67,11 +69,12 @@ class _JobCardState extends State<JobCard> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: _borderSoft, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -235,7 +238,7 @@ class _JobCardState extends State<JobCard> {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.35),
+                      Colors.black.withOpacity(0.28),
                     ],
                   ),
                 ),
@@ -256,10 +259,10 @@ class _JobCardState extends State<JobCard> {
             ),
           ),
 
-        // Pris-badge (prominent)
+        // Pris-badge (prominent, men rolig)
         Positioned(
           right: 12,
-          top: 50,
+          top: 12,
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -270,9 +273,9 @@ class _JobCardState extends State<JobCard> {
               borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -318,9 +321,9 @@ class _JobCardState extends State<JobCard> {
               borderRadius: BorderRadius.circular(999),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -353,8 +356,8 @@ class _JobCardState extends State<JobCard> {
           child: Material(
             color: Colors.white,
             shape: const CircleBorder(),
-            elevation: 2,
-            shadowColor: Colors.black.withOpacity(0.08),
+            elevation: 1,
+            shadowColor: Colors.black.withOpacity(0.06),
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: () => setState(() => _favorite = !_favorite),
@@ -391,7 +394,6 @@ class _JobCardState extends State<JobCard> {
       ),
       child: Stack(
         children: [
-          // Subtile "soft shapes" i designstil
           Positioned(
             right: -30,
             top: -20,
@@ -437,43 +439,25 @@ class _JobCardState extends State<JobCard> {
     if (canTake) {
       return SizedBox(
         height: 42,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF3E6BFF), _primary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        child: ElevatedButton.icon(
+          onPressed: widget.onTake,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: _primary.withOpacity(0.30),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const Size(0, 42),
           ),
-          child: ElevatedButton.icon(
-            onPressed: widget.onTake,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.white,
-              shadowColor: Colors.transparent,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: const Size(0, 42),
-            ),
-            icon: const Icon(Icons.bolt_rounded, size: 16),
-            label: const Text(
-              'Ta jobb',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
+          icon: const Icon(Icons.bolt_rounded, size: 16),
+          label: const Text(
+            'Ta jobb',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
@@ -487,7 +471,7 @@ class _JobCardState extends State<JobCard> {
         style: OutlinedButton.styleFrom(
           foregroundColor: _textPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 18),
-          side: const BorderSide(color: Color(0xFFE4E9F2)),
+          side: const BorderSide(color: _borderSoft),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -515,18 +499,9 @@ class _JobCardState extends State<JobCard> {
         Container(
           width: 32,
           height: 32,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF4F7BFF), _accent],
-            ),
+          decoration: const BoxDecoration(
+            color: _primary,
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: _primary.withOpacity(0.18),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
           ),
           alignment: Alignment.center,
           child: Text(
@@ -593,26 +568,26 @@ class _JobCardState extends State<JobCard> {
 
     if (job.status == JobStatus.open) {
       text = 'Åpent';
-      bg = _accent.withOpacity(0.14);
+      bg = _accent.withOpacity(0.12);
       fg = _accent;
     } else if (job.status == JobStatus.reserved) {
       text = isWorker ? 'Din reservasjon' : 'Reservert';
-      bg = const Color(0xFFFFF4E5);
-      fg = const Color(0xFFE08A00);
+      bg = _warning.withOpacity(0.14);
+      fg = _warning;
     } else if (job.status == JobStatus.inProgress &&
         !job.isCompletedByWorker) {
       text = 'Pågår';
-      bg = const Color(0xFFFFEBD1);
-      fg = const Color(0xFFE08A00);
+      bg = _primary.withOpacity(0.10);
+      fg = _primary;
     } else if (job.status == JobStatus.inProgress &&
         job.isCompletedByWorker) {
-      text = isOwner ? 'Godkjenn?' : 'Venter';
-      bg = const Color(0xFFFFE9E0);
-      fg = Colors.deepOrange;
+      text = isOwner ? 'Godkjenn?' : 'Venter godkjenning';
+      bg = _primary.withOpacity(0.10);
+      fg = _primary;
     } else {
       text = 'Fullført';
-      bg = const Color(0xFFE7F6EC);
-      fg = const Color(0xFF2E9757);
+      bg = _safeGreen.withOpacity(0.12);
+      fg = _safeGreen;
     }
 
     return Container(
@@ -659,13 +634,6 @@ class _JobCardState extends State<JobCard> {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: bg.withOpacity(0.45),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -699,7 +667,7 @@ class _JobCardState extends State<JobCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: filled ? _primary.withOpacity(0.09) : Colors.transparent,
+        color: filled ? _primary.withOpacity(0.08) : Colors.transparent,
         border: filled
             ? null
             : Border.all(color: _primary.withOpacity(0.18), width: 1),
@@ -766,6 +734,7 @@ class _JobCardState extends State<JobCard> {
         );
       case 'rengjøring':
       case 'rengjoring':
+      case 'renhold':
         return const _CategoryPalette(
           start: Color(0xFFE0DBFF),
           end: Color(0xFFC9BEFF),

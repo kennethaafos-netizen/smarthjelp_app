@@ -57,7 +57,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             _field(_desc, 'Beskrivelse', maxLines: 4),
             _field(
               _price,
-              'Pris',
+              'Pris til oppdragstaker (kr)',
               number: true,
               onChanged: (_) => setState(() {}),
             ),
@@ -68,16 +68,16 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: const Color(0xFFE4E9F2)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Oppdragssum til utfører: $_priceValue kr',
+                      'Til oppdragstaker: $_priceValue kr',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF172033),
+                        color: Color(0xFF0F1E3A),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -90,10 +90,19 @@ class _PostJobScreenState extends State<PostJobScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Totalt å betale: ${_totalValue.toStringAsFixed(0)} kr',
+                      'Du betaler totalt: ${_totalValue.toStringAsFixed(0)} kr',
                       style: const TextStyle(
                         color: Color(0xFF2356E8),
                         fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Beløpet holdes trygt av SmartHjelp til du godkjenner fullført jobb.',
+                      style: TextStyle(
+                        color: Color(0xFF0EA877),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -109,7 +118,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
             _dropdown(
               kLocations,
               location,
-              'Sted',
+              'Sted (postnr. + sted)',
               (v) => setState(() => location = v),
             ),
             const SizedBox(height: 20),
@@ -293,7 +302,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         }
       }
 
-      final added = await appState.addJob(
+      final ok = await appState.addJob(
         title: _title.text.trim(),
         description: _desc.text.trim(),
         price: parsedPrice,
@@ -305,46 +314,36 @@ class _PostJobScreenState extends State<PostJobScreen> {
         imageUrls: urls,
       );
 
+      if (ok) {
+        await appState.reloadJobs();
+      }
+
       if (!mounted) return;
 
-      if (!added) {
-        // Vil egentlig aldri skje — local-first insert. Men vi håndterer det trygt.
+      if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Noe gikk galt. Oppdraget ble ikke lagret.'),
+            content: Text(
+              'Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.',
+            ),
           ),
         );
-        setState(() => _isSubmitting = false);
-        return;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Oppdrag publisert')),
+        );
+
+        _title.clear();
+        _desc.clear();
+        _price.clear();
+
+        setState(() {
+          images = [];
+          category = null;
+          location = null;
+          currentIndex = 0;
+        });
       }
-
-      final syncedRemotely = appState.lastAddJobSyncedRemotely;
-
-      if (syncedRemotely) {
-        await appState.reloadJobs();
-        if (!mounted) return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            syncedRemotely
-                ? 'Oppdrag publisert.'
-                : 'Oppdrag lagret lokalt — synkroniseres når nett er tilbake.',
-          ),
-        ),
-      );
-
-      _title.clear();
-      _desc.clear();
-      _price.clear();
-
-      setState(() {
-        images = [];
-        category = null;
-        location = null;
-        currentIndex = 0;
-      });
     } catch (e) {
       debugPrint('Submit error: $e');
       if (mounted) {
@@ -370,7 +369,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
         controller: c,
-        keyboardType: number ? TextInputType.number : TextInputType.text,
+        keyboardType:
+            number ? TextInputType.number : TextInputType.text,
         maxLines: maxLines,
         onChanged: onChanged,
         validator: (v) =>
@@ -390,41 +390,37 @@ class _PostJobScreenState extends State<PostJobScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
         value: value,
-        items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+        items: list
+            .map((e) =>
+                DropdownMenuItem(value: e, child: Text(e)))
+            .toList(),
         onChanged: onChanged,
-        validator: (v) => v == null ? '$label må velges' : null,
+        validator: (v) =>
+            v == null ? '$label må velges' : null,
         decoration: InputDecoration(labelText: label),
       ),
     );
   }
 
+  // Lookup støtter både nye "postnr. + sted"-labels og gamle enkle navn
+  // så eksisterende Supabase-rader ikke plutselig faller tilbake til default.
   double _latForLocation(String locationName) {
-    switch (locationName) {
-      case 'Skien':
-        return 59.2096;
-      case 'Porsgrunn':
-        return 59.1419;
-      case 'Bamble':
-        return 59.0197;
-      case 'Stathelle':
-        return 59.0456;
-      default:
-        return 59.14;
-    }
+    final key = locationName.trim().toLowerCase();
+    if (key.contains('skien')) return 59.2096;
+    if (key.contains('porsgrunn')) return 59.1419;
+    if (key.contains('stathelle')) return 59.0456;
+    if (key.contains('langesund')) return 59.0000;
+    if (key.contains('bamble')) return 59.0197;
+    return 59.14;
   }
 
   double _lngForLocation(String locationName) {
-    switch (locationName) {
-      case 'Skien':
-        return 9.6089;
-      case 'Porsgrunn':
-        return 9.6561;
-      case 'Bamble':
-        return 9.5600;
-      case 'Stathelle':
-        return 9.6910;
-      default:
-        return 9.65;
-    }
+    final key = locationName.trim().toLowerCase();
+    if (key.contains('skien')) return 9.6089;
+    if (key.contains('porsgrunn')) return 9.6561;
+    if (key.contains('stathelle')) return 9.6910;
+    if (key.contains('langesund')) return 9.7500;
+    if (key.contains('bamble')) return 9.5600;
+    return 9.65;
   }
 }
