@@ -17,13 +17,25 @@ enum JobSortOption {
 
 enum _JobsTab { all, mine, taken }
 
+// Public filter mode used when JobsScreen is opened as a focused list
+// (e.g. from Profile "Live status" rows).
+enum JobsFilter {
+  all,
+  takenActive,
+  postedActive,
+  takenCompleted,
+  postedCompleted,
+}
+
 const Color _primary = Color(0xFF2356E8);
 const Color _bg = Color(0xFFF4F7FC);
 const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
 
 class JobsScreen extends StatefulWidget {
-  const JobsScreen({super.key});
+  const JobsScreen({super.key, this.initialFilter});
+
+  final JobsFilter? initialFilter;
 
   @override
   State<JobsScreen> createState() => _JobsScreenState();
@@ -34,6 +46,9 @@ class _JobsScreenState extends State<JobsScreen> {
   bool _showOnlyOpen = false;
   _JobsTab _activeTab = _JobsTab.all;
   bool _isRefreshing = false;
+
+  bool get _isFilteredView =>
+      widget.initialFilter != null && widget.initialFilter != JobsFilter.all;
 
   @override
   void initState() {
@@ -59,6 +74,88 @@ class _JobsScreenState extends State<JobsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isFilteredView) {
+      return _buildFilteredView(context);
+    }
+    return _buildTabbedView(context);
+  }
+
+  // ---------- FILTERED VIEW (opened from Profile etc.) ----------
+  Widget _buildFilteredView(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final currentUser = appState.currentUser;
+    final filter = widget.initialFilter!;
+    final jobs = _sortedJobs(_jobsForFilter(appState, filter));
+
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: _bg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: _textPrimary),
+        title: Text(
+          _filterTitle(filter),
+          style: const TextStyle(
+            color: _textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _isRefreshing
+                ? const SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: _primary,
+                        ),
+                      ),
+                    ),
+                  )
+                : IconButton(
+                    onPressed: _handleRefresh,
+                    icon: const Icon(Icons.refresh_rounded, color: _primary),
+                    tooltip: 'Last inn på nytt',
+                  ),
+          ),
+        ],
+      ),
+      body: appState.isLoadingJobs && !appState.hasLoadedJobs
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _handleRefresh,
+              color: _primary,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                children: [
+                  _filterSummary(filter, jobs.length),
+                  const SizedBox(height: 14),
+                  if (jobs.isEmpty)
+                    _emptyBox(_emptyTextForFilter(filter))
+                  else
+                    ..._buildJobList(
+                      context,
+                      jobs,
+                      currentUser.id,
+                      filter: filter,
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  // ---------- DEFAULT TABBED VIEW ----------
+  Widget _buildTabbedView(BuildContext context) {
     final appState = context.watch<AppState>();
     final currentUser = appState.currentUser;
 
@@ -169,12 +266,154 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
+  // ---------- FILTER HELPERS ----------
+  List<Job> _jobsForFilter(AppState appState, JobsFilter filter) {
+    switch (filter) {
+      case JobsFilter.all:
+        return appState.allJobsSortedByNewest;
+      case JobsFilter.takenActive:
+        return appState.activeTakenJobs;
+      case JobsFilter.postedActive:
+        return appState.activePostedJobs;
+      case JobsFilter.takenCompleted:
+        return appState.completedTakenJobs;
+      case JobsFilter.postedCompleted:
+        return appState.completedPostedJobs;
+    }
+  }
+
+  String _filterTitle(JobsFilter filter) {
+    switch (filter) {
+      case JobsFilter.all:
+        return 'Alle oppdrag';
+      case JobsFilter.takenActive:
+        return 'Oppdrag jeg tar';
+      case JobsFilter.postedActive:
+        return 'Mine aktive oppdrag';
+      case JobsFilter.takenCompleted:
+        return 'Fullført av meg';
+      case JobsFilter.postedCompleted:
+        return 'Mine fullførte oppdrag';
+    }
+  }
+
+  String _filterSubtitle(JobsFilter filter) {
+    switch (filter) {
+      case JobsFilter.all:
+        return 'Alle tilgjengelige oppdrag';
+      case JobsFilter.takenActive:
+        return 'Oppdrag du har reservert eller jobber med.';
+      case JobsFilter.postedActive:
+        return 'Oppdrag du har lagt ut som fortsatt er aktive.';
+      case JobsFilter.takenCompleted:
+        return 'Oppdrag du har fullført for andre.';
+      case JobsFilter.postedCompleted:
+        return 'Oppdrag andre har fullført for deg.';
+    }
+  }
+
+  String _emptyTextForFilter(JobsFilter filter) {
+    switch (filter) {
+      case JobsFilter.all:
+        return 'Ingen oppdrag akkurat nå.';
+      case JobsFilter.takenActive:
+        return 'Du har ingen aktive oppdrag.';
+      case JobsFilter.postedActive:
+        return 'Du har ingen aktive oppdrag ute.';
+      case JobsFilter.takenCompleted:
+        return 'Du har ikke fullført noen oppdrag enda.';
+      case JobsFilter.postedCompleted:
+        return 'Ingen av oppdragene dine er fullført enda.';
+    }
+  }
+
+  Widget _filterSummary(JobsFilter filter, int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE4E9F2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.filter_list_rounded,
+              color: _primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _filterTitle(filter),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                    color: _textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _filterSubtitle(filter),
+                  style: const TextStyle(
+                    color: _textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                color: _primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- JOB LIST ----------
   List<Widget> _buildJobList(
     BuildContext context,
     List<Job> jobs,
-    String currentUserId,
-  ) {
+    String currentUserId, {
+    JobsFilter? filter,
+  }) {
     final widgets = <Widget>[];
+    final isAllTab = filter == null && _activeTab == _JobsTab.all;
+    final isMineTab = filter == null && _activeTab == _JobsTab.mine;
+    final isTakenTab = filter == null && _activeTab == _JobsTab.taken;
+
+    final showOwnerActions = isMineTab ||
+        filter == JobsFilter.postedActive ||
+        filter == JobsFilter.postedCompleted;
+    final showTakerActions = isTakenTab || filter == JobsFilter.takenActive;
 
     for (final job in jobs) {
       final isOwner = job.createdByUserId == currentUserId;
@@ -189,18 +428,20 @@ class _JobsScreenState extends State<JobsScreen> {
                 job: job,
                 distanceText: job.locationName,
                 onTap: () => _openJob(context, job),
-                onTake: (_activeTab == _JobsTab.all &&
+                onTake: (isAllTab &&
                         job.status == JobStatus.open &&
                         !isOwner)
                     ? () => _takeJob(context, job)
                     : null,
               ),
-              if (isOwner && _activeTab == _JobsTab.mine) ...[
+              if (isOwner &&
+                  showOwnerActions &&
+                  job.status == JobStatus.open) ...[
                 const SizedBox(height: 10),
                 _ownerRowActions(context, job),
               ],
               if (isTaker &&
-                  _activeTab == _JobsTab.taken &&
+                  showTakerActions &&
                   job.status == JobStatus.reserved) ...[
                 const SizedBox(height: 10),
                 _takerRowActions(context, job),

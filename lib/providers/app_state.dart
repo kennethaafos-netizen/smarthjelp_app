@@ -318,7 +318,6 @@ class AppState extends ChangeNotifier {
       }
 
       if (res.session == null) {
-        // Bekreftelse på e-post er skrudd på i Supabase — brukeren må verifisere.
         return 'Vi har sendt en bekreftelsesepost. Bekreft den og logg inn.';
       }
 
@@ -1160,6 +1159,23 @@ class AppState extends ChangeNotifier {
       phone: phone,
       wantsToWork: wantsToWork,
       preferredArea: preferredArea,
+    );
+    _users[_currentUser.id] = _currentUser;
+    notifyListeners();
+    _syncProfileToSupabase();
+  }
+
+  // Rask redigering av navn + telefon fra profilen (bottom sheet).
+  // Lagrer både til lokal state og Supabase user_metadata.
+  void updateBasicProfile({
+    required String firstName,
+    required String phone,
+  }) {
+    final cleanedName = firstName.trim();
+    final cleanedPhone = phone.trim();
+    _currentUser = _currentUser.copyWith(
+      firstName: cleanedName.isEmpty ? _currentUser.firstName : cleanedName,
+      phone: cleanedPhone,
     );
     _users[_currentUser.id] = _currentUser;
     notifyListeners();

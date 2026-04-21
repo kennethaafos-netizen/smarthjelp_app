@@ -1,12 +1,13 @@
+// UI UPGRADE: Profile as navigation hub — Live status rows route to JobsScreen
+// with the correct filter mode.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import 'account_screen.dart';
 import 'export_screen.dart';
-import 'job_detail_screen.dart';
+import 'jobs_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -28,30 +29,6 @@ class ProfileScreen extends StatelessWidget {
     final completedTaken = appState.completedTakenJobs;
     final activePosted = appState.activePostedJobs;
     final completedPosted = appState.completedPostedJobs;
-
-    final reservedJobs =
-        activeTaken.where((j) => j.status == JobStatus.reserved).length;
-
-    final profileRows = <Widget>[
-      _infoRow('Navn', user.firstName),
-      _infoRow('E-post', user.email),
-    ];
-
-    if (user.phone.isNotEmpty) {
-      profileRows.add(_infoRow('Telefon', user.phone));
-    }
-
-    if (user.preferredArea.isNotEmpty) {
-      profileRows.add(_infoRow('Område', user.preferredArea));
-    }
-
-    profileRows.add(
-      _infoRow(
-        'Vil ta oppdrag',
-        user.wantsToWork ? 'Ja' : 'Nei',
-        isLast: true,
-      ),
-    );
 
     return Scaffold(
       backgroundColor: _bg,
@@ -75,44 +52,39 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _section(
                 title: 'Live status',
+                subtitle: 'Trykk for å se oppdragene',
                 child: Column(
                   children: [
-                    _statusRow(
-                      context,
-                      label: 'Reserverte oppdrag',
-                      value: reservedJobs,
-                      jobs: activeTaken
-                          .where((j) => j.status == JobStatus.reserved)
-                          .toList(),
-                      accent: const Color(0xFFF5B301),
-                    ),
-                    _statusRow(
-                      context,
+                    _PressableStatusRow(
                       label: 'Oppdrag jeg tar',
                       value: activeTaken.length,
-                      jobs: activeTaken,
                       accent: _primary,
+                      onTap: () =>
+                          _openJobs(context, JobsFilter.takenActive),
                     ),
-                    _statusRow(
-                      context,
-                      label: 'Fullført av meg',
-                      value: completedTaken.length,
-                      jobs: completedTaken,
-                      accent: _safeGreen,
-                    ),
-                    _statusRow(
-                      context,
+                    const SizedBox(height: 8),
+                    _PressableStatusRow(
                       label: 'Mine aktive oppdrag',
                       value: activePosted.length,
-                      jobs: activePosted,
                       accent: const Color(0xFF8B5CF6),
+                      onTap: () =>
+                          _openJobs(context, JobsFilter.postedActive),
                     ),
-                    _statusRow(
-                      context,
+                    const SizedBox(height: 8),
+                    _PressableStatusRow(
+                      label: 'Fullført av meg',
+                      value: completedTaken.length,
+                      accent: _safeGreen,
+                      onTap: () =>
+                          _openJobs(context, JobsFilter.takenCompleted),
+                    ),
+                    const SizedBox(height: 8),
+                    _PressableStatusRow(
                       label: 'Mine fullførte oppdrag',
                       value: completedPosted.length,
-                      jobs: completedPosted,
                       accent: _muted,
+                      onTap: () =>
+                          _openJobs(context, JobsFilter.postedCompleted),
                       isLast: true,
                     ),
                   ],
@@ -121,7 +93,21 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _section(
                 title: 'Profil',
-                child: Column(children: profileRows),
+                child: Column(
+                  children: [
+                    _infoRow('Navn', user.firstName),
+                    _infoRow('E-post',
+                        user.email.isEmpty ? 'Ikke satt' : user.email),
+                    _infoRow('Telefon',
+                        user.phone.isEmpty ? 'Ikke satt' : user.phone),
+                    _infoRow('Område', user.preferredArea),
+                    _infoRow(
+                      'Vil ta oppdrag',
+                      user.wantsToWork ? 'Ja' : 'Nei',
+                      isLast: true,
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               _primaryActionButton(
@@ -150,7 +136,12 @@ class ProfileScreen extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 12),
-              _logoutButton(context),
+              _outlinedActionButton(
+                label: 'Bytt bruker (test)',
+                onTap: () {
+                  context.read<AppState>().switchUser();
+                },
+              ),
             ],
           ),
         ),
@@ -158,9 +149,18 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  void _openJobs(BuildContext context, JobsFilter filter) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobsScreen(initialFilter: filter),
+      ),
+    );
+  }
+
   // ---------- HEADER ----------
   Widget _header(BuildContext context, UserProfile user) {
-    final isVerified = user.isVerified;
+    final isVerified = user.email.isNotEmpty && user.phone.isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
@@ -323,83 +323,6 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ---------- STATUS ROW ----------
-  Widget _statusRow(
-    BuildContext context, {
-    required String label,
-    required int value,
-    required List<Job> jobs,
-    required Color accent,
-    bool isLast = false,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => _JobListScreen(title: label, jobs: jobs),
-            ),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            color: accent.withOpacity(0.09),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: accent.withOpacity(0.18),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: accent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: _text,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$value',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: accent,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded, color: _muted.withOpacity(0.8)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -631,9 +554,12 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _logoutButton(BuildContext context) {
+  Widget _outlinedActionButton({
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: () => context.read<AppState>().logout(),
+      onTap: onTap,
       child: Container(
         height: 50,
         alignment: Alignment.center,
@@ -641,14 +567,14 @@ class ProfileScreen extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFFDC2626).withOpacity(0.25),
+            color: _primary.withOpacity(0.25),
             width: 1.2,
           ),
         ),
-        child: const Text(
-          'Logg ut',
-          style: TextStyle(
-            color: Color(0xFFDC2626),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: _primary,
             fontWeight: FontWeight.w800,
             fontSize: 14.5,
           ),
@@ -660,6 +586,7 @@ class ProfileScreen extends StatelessWidget {
   // ---------- SECTION WRAPPER ----------
   Widget _section({
     required String title,
+    String? subtitle,
     required Widget child,
   }) {
     return Container(
@@ -688,6 +615,17 @@ class ProfileScreen extends StatelessWidget {
               letterSpacing: -0.2,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: _muted,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           child,
         ],
@@ -696,123 +634,116 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _JobListScreen extends StatelessWidget {
-  final String title;
-  final List<Job> jobs;
+// ---------- PRESSABLE STATUS ROW ----------
+class _PressableStatusRow extends StatefulWidget {
+  final String label;
+  final int value;
+  final Color accent;
+  final VoidCallback onTap;
+  final bool isLast;
 
-  const _JobListScreen({
-    required this.title,
-    required this.jobs,
+  const _PressableStatusRow({
+    required this.label,
+    required this.value,
+    required this.accent,
+    required this.onTap,
+    this.isLast = false,
   });
 
-  Widget _statusBadge(JobStatus status) {
-    Color color;
-    String text;
+  @override
+  State<_PressableStatusRow> createState() => _PressableStatusRowState();
+}
 
-    switch (status) {
-      case JobStatus.reserved:
-        color = Colors.orange;
-        text = 'Reservert';
-        break;
-      case JobStatus.inProgress:
-        color = Colors.blue;
-        text = 'Pågår';
-        break;
-      case JobStatus.completed:
-        color = Colors.green;
-        text = 'Fullført';
-        break;
-      default:
-        color = Colors.grey;
-        text = 'Åpen';
-    }
+class _PressableStatusRowState extends State<_PressableStatusRow> {
+  static const _text = Color(0xFF172033);
+  static const _muted = Color(0xFF6E7A90);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
-      ),
-    );
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed == v) return;
+    setState(() => _pressed = v);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FC),
-      appBar: AppBar(title: Text(title)),
-      body: jobs.isEmpty
-          ? const Center(child: Text('Ingen oppdrag'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: jobs.length,
-              itemBuilder: (_, i) {
-                final job = jobs[i];
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                      )
-                    ],
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => JobDetailScreen(job: job),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                job.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                            _statusBadge(job.status),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(job.locationName),
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('${job.price} kr'),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: widget.accent.withOpacity(_pressed ? 0.16 : 0.09),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: widget.accent.withOpacity(_pressed ? 0.32 : 0.18),
+              width: 1,
             ),
+            boxShadow: _pressed
+                ? []
+                : [
+                    BoxShadow(
+                      color: widget.accent.withOpacity(0.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: _text,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: widget.accent.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${widget.value}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: widget.accent,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: _muted.withOpacity(0.8),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
