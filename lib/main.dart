@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ NY
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'providers/app_state.dart';
+import 'screens/onboarding_screen.dart';
 import 'widgets/app_shell.dart';
 import 'firebase_options.dart';
 
@@ -18,24 +20,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🔥 FIREBASE INIT (BEHOLDES)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  FirebaseMessaging.onBackgroundMessage(
-    _firebaseMessagingBackgroundHandler,
-  );
-
-  // 🔔 Push permission
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await FirebaseMessaging.instance.requestPermission();
 
-  // 🚀 SUPABASE INIT (NYTT)
   await Supabase.initialize(
-    // 🔥 LIM INN HER:
     url: 'https://yuzjubqzngsjzwfrucxg.supabase.co',
-    
-    // 🔥 LIM INN HER:
     anonKey: 'sb_publishable_PzzcCP5I-vD1bm-XaoNYlA_1veFC31d',
   );
 
@@ -52,21 +45,15 @@ class SmartHjelpApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'SmartHjelp',
-
-        // 🔥 GLOBAL THEME
         theme: ThemeData(
           useMaterial3: true,
-
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF4A8BFF),
-            primary: const Color(0xFF4A8BFF),
-            secondary: const Color(0xFF2ED3C6),
+            seedColor: const Color(0xFF2356E8),
+            primary: const Color(0xFF2356E8),
+            secondary: const Color(0xFF18B7A6),
           ),
-
-          scaffoldBackgroundColor: const Color(0xFFF6F8FC),
-
+          scaffoldBackgroundColor: const Color(0xFFF4F7FC),
           textTheme: GoogleFonts.interTextTheme(),
-
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               elevation: 0,
@@ -74,42 +61,33 @@ class SmartHjelpApp extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              backgroundColor: const Color(0xFF4A8BFF),
+              backgroundColor: const Color(0xFF2356E8),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-
           filledButtonTheme: FilledButtonThemeData(
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              backgroundColor: const Color(0xFF4A8BFF),
+              backgroundColor: const Color(0xFF2356E8),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-
           outlinedButtonTheme: OutlinedButtonThemeData(
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              side: const BorderSide(color: Color(0xFF4A8BFF)),
-              foregroundColor: const Color(0xFF4A8BFF),
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              side: const BorderSide(color: Color(0xFF2356E8)),
+              foregroundColor: const Color(0xFF2356E8),
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: Colors.white,
@@ -122,7 +100,6 @@ class SmartHjelpApp extends StatelessWidget {
               borderSide: BorderSide.none,
             ),
           ),
-
           cardTheme: CardThemeData(
             elevation: 0,
             color: Colors.white,
@@ -130,7 +107,6 @@ class SmartHjelpApp extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
             ),
           ),
-
           appBarTheme: const AppBarTheme(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -138,9 +114,47 @@ class SmartHjelpApp extends StatelessWidget {
             centerTitle: false,
           ),
         ),
-
-        home: const AppShell(),
+        home: const _OnboardingGate(),
       ),
     );
+  }
+}
+
+class _OnboardingGate extends StatefulWidget {
+  const _OnboardingGate();
+
+  @override
+  State<_OnboardingGate> createState() => _OnboardingGateState();
+}
+
+class _OnboardingGateState extends State<_OnboardingGate> {
+  bool? _onboardingDone;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _onboardingDone = prefs.getBool('onboarding_done') ?? false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = _onboardingDone;
+
+    if (done == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF4F7FC),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return done ? const AppShell() : const OnboardingScreen();
   }
 }

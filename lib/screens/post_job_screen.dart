@@ -293,7 +293,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         }
       }
 
-      final ok = await appState.addJob(
+      final added = await appState.addJob(
         title: _title.text.trim(),
         description: _desc.text.trim(),
         price: parsedPrice,
@@ -305,36 +305,46 @@ class _PostJobScreenState extends State<PostJobScreen> {
         imageUrls: urls,
       );
 
-      if (ok) {
-        await appState.reloadJobs();
-      }
-
       if (!mounted) return;
 
-      if (!ok) {
+      if (!added) {
+        // Vil egentlig aldri skje — local-first insert. Men vi håndterer det trygt.
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.',
-            ),
+            content: Text('Noe gikk galt. Oppdraget ble ikke lagret.'),
           ),
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Oppdrag publisert')),
-        );
-
-        _title.clear();
-        _desc.clear();
-        _price.clear();
-
-        setState(() {
-          images = [];
-          category = null;
-          location = null;
-          currentIndex = 0;
-        });
+        setState(() => _isSubmitting = false);
+        return;
       }
+
+      final syncedRemotely = appState.lastAddJobSyncedRemotely;
+
+      if (syncedRemotely) {
+        await appState.reloadJobs();
+        if (!mounted) return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            syncedRemotely
+                ? 'Oppdrag publisert.'
+                : 'Oppdrag lagret lokalt — synkroniseres når nett er tilbake.',
+          ),
+        ),
+      );
+
+      _title.clear();
+      _desc.clear();
+      _price.clear();
+
+      setState(() {
+        images = [];
+        category = null;
+        location = null;
+        currentIndex = 0;
+      });
     } catch (e) {
       debugPrint('Submit error: $e');
       if (mounted) {
@@ -360,8 +370,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
         controller: c,
-        keyboardType:
-            number ? TextInputType.number : TextInputType.text,
+        keyboardType: number ? TextInputType.number : TextInputType.text,
         maxLines: maxLines,
         onChanged: onChanged,
         validator: (v) =>
@@ -381,13 +390,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
         value: value,
-        items: list
-            .map((e) =>
-                DropdownMenuItem(value: e, child: Text(e)))
-            .toList(),
+        items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
-        validator: (v) =>
-            v == null ? '$label må velges' : null,
+        validator: (v) => v == null ? '$label må velges' : null,
         decoration: InputDecoration(labelText: label),
       ),
     );

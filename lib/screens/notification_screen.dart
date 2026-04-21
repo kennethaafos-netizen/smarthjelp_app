@@ -14,7 +14,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void initState() {
     super.initState();
-    // Marker alle som lest så snart skjermen åpnes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<AppState>().markAllNotificationsRead();
@@ -37,21 +36,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
           'Varsler',
           style: TextStyle(
             color: Color(0xFF0F1E3A),
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             fontSize: 18,
           ),
         ),
         actions: [
           if (items.isNotEmpty)
             TextButton(
-              onPressed: () {
-                _confirmClear(context);
-              },
+              onPressed: () => _confirmClear(context),
               child: const Text(
                 'Tøm alle',
                 style: TextStyle(
                   color: Color(0xFF2356E8),
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -86,7 +83,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
               'Ingen varsler ennå',
               style: TextStyle(
                 color: Color(0xFF0F1E3A),
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 fontSize: 17,
               ),
             ),
@@ -128,7 +125,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             'Tøm alle varsler?',
             style: TextStyle(
               color: Color(0xFF0F1E3A),
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
           ),
           content: const Text(
@@ -152,7 +149,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 'Tøm',
                 style: TextStyle(
                   color: Color(0xFFDC2626),
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -203,7 +200,7 @@ class _NotificationTile extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF172033),
                     fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     height: 1.35,
                   ),
                 ),

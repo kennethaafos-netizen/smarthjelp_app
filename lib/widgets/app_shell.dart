@@ -40,98 +40,104 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: _buildScreen(),
-
-      // 🔥 NY PREMIUM BOTTOM BAR
-      bottomNavigationBar: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            height: 70,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+      bottomNavigationBar: SizedBox(
+        height: 108,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 22,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _NavItem(
+                    icon: Icons.home_outlined,
+                    activeIcon: Icons.home_rounded,
+                    label: 'Hjem',
+                    isActive: _index == 0,
+                    onTap: () => _onNavigate(0),
+                  ),
+                  _NavItem(
+                    icon: Icons.work_outline_rounded,
+                    activeIcon: Icons.work_rounded,
+                    label: 'Oppdrag',
+                    isActive: _index == 1,
+                    onTap: () => _onNavigate(1),
+                  ),
+                  const SizedBox(width: 66),
+                  _NavItem(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    activeIcon: Icons.chat_bubble_rounded,
+                    label: 'Chat',
+                    isActive: _index == 3,
+                    onTap: () => _onNavigate(3),
+                  ),
+                  _NavItem(
+                    icon: Icons.person_outline_rounded,
+                    activeIcon: Icons.person_rounded,
+                    label: 'Profil',
+                    isActive: _index == 4,
+                    onTap: () => _onNavigate(4),
+                  ),
+                ],
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home,
-                  label: "Hjem",
-                  isActive: _index == 0,
-                  onTap: () => _onNavigate(0),
-                ),
-                _NavItem(
-                  icon: Icons.work_outline,
-                  activeIcon: Icons.work,
-                  label: "Oppdrag",
-                  isActive: _index == 1,
-                  onTap: () => _onNavigate(1),
-                ),
-
-                const SizedBox(width: 60), // plass til FAB
-
-                _NavItem(
-                  icon: Icons.chat_bubble_outline,
-                  activeIcon: Icons.chat_bubble,
-                  label: "Chat",
-                  isActive: _index == 3,
-                  onTap: () => _onNavigate(3),
-                ),
-                _NavItem(
-                  icon: Icons.person_outline,
-                  activeIcon: Icons.person,
-                  label: "Profil",
-                  isActive: _index == 4,
-                  onTap: () => _onNavigate(4),
-                ),
-              ],
-            ),
-          ),
-
-          // 🔥 STOR + KNAPP
-          Positioned(
-            bottom: 20,
-            child: GestureDetector(
-              onTap: () => _onNavigate(2),
-              child: Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF4F7BFF),
-                      Color(0xFF18B7A6),
+            Positioned(
+              bottom: 30,
+              child: GestureDetector(
+                onTap: () => _onNavigate(2),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF4F7BFF),
+                        Color(0xFF18B7A6),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF4F7BFF).withOpacity(0.45),
+                        blurRadius: 22,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.9),
+                        blurRadius: 0,
+                        spreadRadius: 3,
+                        offset: const Offset(0, 0),
+                      ),
                     ],
                   ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF4F7BFF).withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: Colors.white,
-                  size: 32,
+                  child: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -159,21 +165,26 @@ class _NavItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 60,
+        width: 62,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isActive ? activeIcon : icon,
               color: color,
+              size: 22,
             ),
             const SizedBox(height: 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: color,
               ),
             ),

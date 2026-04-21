@@ -1,4 +1,3 @@
-// UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +13,7 @@ const Color _bg = Color(0xFFF4F7FC);
 const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
 const Color _online = Color(0xFF0EA877);
+const Color _bubbleBorder = Color(0xFFE6EAF2);
 
 class ChatScreen extends StatefulWidget {
   final Job job;
@@ -271,8 +271,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: _primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -289,8 +288,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -322,8 +320,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const Spacer(),
               InkResponse(
                 radius: 20,
-                onTap: () =>
-                    setState(() => _summaryExpanded = !_summaryExpanded),
+                onTap: () => setState(() => _summaryExpanded = !_summaryExpanded),
                 child: AnimatedRotation(
                   duration: const Duration(milliseconds: 180),
                   turns: _summaryExpanded ? 0.5 : 0,
@@ -351,8 +348,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.place_outlined,
-                    size: 15, color: _textMuted),
+                const Icon(Icons.place_outlined, size: 15, color: _textMuted),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -368,8 +364,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [_primary, _accent],
@@ -448,8 +443,7 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            icon: const Icon(Icons.close_rounded,
-                color: _textMuted, size: 20),
+            icon: const Icon(Icons.close_rounded, color: _textMuted, size: 20),
             onPressed: () => setState(() => _replyTo = null),
           ),
         ],
@@ -470,15 +464,9 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 14,
-                  ),
-                ],
+                border: Border.all(color: _bubbleBorder),
               ),
-              child: const Icon(Icons.forum_outlined,
-                  color: _primary, size: 34),
+              child: const Icon(Icons.forum_outlined, color: _primary, size: 34),
             ),
             const SizedBox(height: 14),
             const Text(
@@ -555,8 +543,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
@@ -601,8 +588,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   constraints: const BoxConstraints(maxWidth: 280),
                   decoration: BoxDecoration(
                     color: isMe ? null : Colors.white,
@@ -614,13 +601,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           )
                         : null,
                     borderRadius: borderRadius,
+                    border: isMe ? null : Border.all(color: _bubbleBorder),
                     boxShadow: [
                       BoxShadow(
                         color: isMe
                             ? _primary.withOpacity(0.22)
-                            : Colors.black.withOpacity(0.05),
-                        blurRadius: isMe ? 14 : 10,
-                        offset: Offset(0, isMe ? 6 : 3),
+                            : Colors.black.withOpacity(0.04),
+                        blurRadius: isMe ? 14 : 8,
+                        offset: Offset(0, isMe ? 6 : 2),
                       ),
                     ],
                   ),
@@ -693,10 +681,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (msg.reaction != null) ...[
-                            Text(
-                              msg.reaction!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
+                            Text(msg.reaction!,
+                                style: const TextStyle(fontSize: 13)),
                             const SizedBox(width: 6),
                           ],
                           Text(
@@ -741,6 +727,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: _bubbleBorder),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.04),
@@ -808,8 +795,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
           ),
-          child: const Icon(Icons.send_rounded,
-              color: Colors.white, size: 20),
+          child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
         ),
       ),
     );

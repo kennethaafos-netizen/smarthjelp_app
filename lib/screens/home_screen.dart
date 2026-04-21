@@ -1,4 +1,3 @@
-// UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +6,7 @@ import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
 import 'job_detail_screen.dart';
+import 'notification_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(int)? onNavigate;
@@ -23,8 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  // Lokal kategori-filter state (ikke lagret i AppState)
-  String? _selectedCategory; // null = Alle
+  String? _selectedCategory;
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
@@ -63,19 +62,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _header(context, jobs),
+            _header(context, jobs, appState),
             const SizedBox(height: 8),
             _segmentedToggle(),
             const SizedBox(height: 12),
             _categoryChipsRow(),
             const SizedBox(height: 12),
-
-            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
-
-            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -84,7 +79,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _previewCard(_selectedJob!),
                 ),
               ),
-
             if (_isTakingJob)
               const Padding(
                 padding: EdgeInsets.only(bottom: 20),
@@ -95,8 +89,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // ---------------- CATEGORY FILTER ----------------
 
   List<Job> _applyCategoryFilter(List<Job> jobs) {
     if (_selectedCategory == null) return jobs;
@@ -110,12 +102,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _categories.length + 1,
+        itemCount: _categories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          if (index == _categories.length) {
-            return _layersMiniButton();
-          }
           final opt = _categories[index];
           final isAll = opt.label == 'Alle';
           final active = isAll
@@ -173,11 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 15,
-              color: active ? Colors.white : _textPrimary,
-            ),
+            Icon(icon, size: 15, color: active ? Colors.white : _textPrimary),
             const SizedBox(width: 6),
             Text(
               label,
@@ -192,113 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Widget _layersMiniButton() {
-    return GestureDetector(
-      onTap: () => _showMoreFiltersSheet(),
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: _textMuted.withOpacity(0.18),
-            width: 1.1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.tune_rounded,
-          size: 18,
-          color: _textPrimary,
-        ),
-      ),
-    );
-  }
-
-  void _showMoreFiltersSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _textMuted.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Flere filtre',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: _textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Sortering og avanserte filtre kommer snart.',
-                  style: TextStyle(
-                    color: _textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
-                      'OK',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ---------------- PREVIEW CARD ----------------
 
   Widget _previewCard(Job job) {
     return Container(
@@ -319,9 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
             job: job,
             distanceText: job.locationName,
             onTap: () => _openJob(job),
-            onTake: job.status == JobStatus.open
-                ? () => _takeAndOpen(job)
-                : null,
+            onTake: job.status == JobStatus.open ? () => _takeAndOpen(job) : null,
           ),
           Positioned(
             top: 10,
@@ -336,11 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => setState(() => _selectedJob = null),
                 child: const Padding(
                   padding: EdgeInsets.all(7),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: _textPrimary,
-                  ),
+                  child: Icon(Icons.close_rounded, size: 18, color: _textPrimary),
                 ),
               ),
             ),
@@ -349,8 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // ---------------- MAP ----------------
 
   Widget _mapView(List<Job> jobs) {
     return Container(
@@ -390,16 +260,12 @@ class _HomeScreenState extends State<HomeScreen> {
           appState.jobMarkerLng(job),
         ),
         onTap: () {
-          final fresh =
-              context.read<AppState>().getJobById(job.id) ?? job;
-
+          final fresh = context.read<AppState>().getJobById(job.id) ?? job;
           setState(() => _selectedJob = fresh);
         },
       );
     }).toSet();
   }
-
-  // ---------------- LIST ----------------
 
   Widget _listView(List<Job> jobs) {
     if (jobs.isEmpty) {
@@ -422,9 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 job: job,
                 distanceText: job.locationName,
                 onTap: () => _openJob(job),
-                onTake: job.status == JobStatus.open
-                    ? () => _takeAndOpen(job)
-                    : null,
+                onTake:
+                    job.status == JobStatus.open ? () => _takeAndOpen(job) : null,
               ),
             ),
           )
@@ -476,8 +341,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------------- ACTIONS ----------------
-
   Future<void> _takeAndOpen(Job job) async {
     if (_isTakingJob) return;
 
@@ -501,10 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final updated = appState.getJobById(job.id);
-
-    if (updated != null) {
-      _openJob(updated);
-    }
+    if (updated != null) _openJob(updated);
 
     if (mounted) setState(() => _isTakingJob = false);
   }
@@ -512,16 +372,22 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openJob(Job job) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => JobDetailScreen(job: job),
-      ),
+      MaterialPageRoute(builder: (_) => JobDetailScreen(job: job)),
     );
   }
 
-  // ---------------- UI HEADER ----------------
+  void _openNotifications() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+    );
+  }
 
-  Widget _header(BuildContext context, List<Job> jobs) {
-    final user = context.read<AppState>().currentUser;
+  void _goToProfile() => widget.onNavigate?.call(4);
+  void _goToJobs() => widget.onNavigate?.call(1);
+
+  Widget _header(BuildContext context, List<Job> jobs, AppState appState) {
+    final user = appState.currentUser;
     final count = jobs.length;
 
     return Padding(
@@ -543,6 +409,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 2),
                 Text(
                   user.firstName.isEmpty ? 'Velkommen' : user.firstName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -556,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          _notificationBell(),
+          _notificationBell(hasUnread: appState.hasUnreadNotifications),
           const SizedBox(width: 10),
           _avatar(user.firstName),
         ],
@@ -564,16 +432,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _notificationBell() {
+  Widget _notificationBell({required bool hasUnread}) {
     return GestureDetector(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ingen nye varsler.'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      },
+      onTap: _openNotifications,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -592,25 +453,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.notifications_none_rounded,
+            child: Icon(
+              hasUnread
+                  ? Icons.notifications_rounded
+                  : Icons.notifications_none_rounded,
               color: _textPrimary,
               size: 22,
             ),
           ),
-          Positioned(
-            top: 10,
-            right: 11,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDC2626),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
+          if (hasUnread)
+            Positioned(
+              top: 10,
+              right: 11,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -618,62 +482,72 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _avatar(String name) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F7BFF), _accent],
-        ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: _primary.withOpacity(0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: _goToProfile,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF4F7BFF), _accent],
           ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 18,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: _primary.withOpacity(0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
         ),
       ),
     );
   }
 
   Widget _countPill(int count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: _accent.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.bolt_rounded, size: 14, color: _accent),
-          const SizedBox(width: 6),
-          Text(
-            count == 1
-                ? '1 oppdrag tilgjengelig'
-                : '$count oppdrag tilgjengelig',
-            style: const TextStyle(
-              color: _accent,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
+    return GestureDetector(
+      onTap: _goToJobs,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: _accent.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bolt_rounded, size: 14, color: _accent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                count == 1
+                    ? '1 oppdrag tilgjengelig'
+                    : '$count oppdrag tilgjengelig',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _accent,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, size: 14, color: _accent),
+          ],
+        ),
       ),
     );
   }
-
-  // ---------------- SEGMENTED TOGGLE ----------------
 
   Widget _segmentedToggle() {
     return Padding(
@@ -748,11 +622,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: active ? Colors.white : _textMuted,
-              ),
+              Icon(icon, size: 16, color: active ? Colors.white : _textMuted),
               const SizedBox(width: 6),
               Text(
                 label,

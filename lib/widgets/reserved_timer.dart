@@ -19,17 +19,17 @@ class ReservedTimer extends StatefulWidget {
 }
 
 class _ReservedTimerState extends State<ReservedTimer> {
-  late Timer _timer;
+  Timer? _timer;
   Duration remaining = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _updateTime();
-
+    // Initier timer FØR vi gjør noe som kan cancelle den.
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _updateTime();
     });
+    _updateTime();
   }
 
   void _updateTime() {
@@ -41,18 +41,17 @@ class _ReservedTimerState extends State<ReservedTimer> {
       remaining = diff;
     });
 
-    // 🔥 AUTO EXPIRE
     if (diff.inSeconds <= 0) {
-      _timer.cancel();
-
-      // 🔥 KALL APPSTATE
+      _timer?.cancel();
+      _timer = null;
       context.read<AppState>().expireReservation(widget.jobId);
     }
   }
 
   @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
+    _timer = null;
     super.dispose();
   }
 
@@ -60,9 +59,9 @@ class _ReservedTimerState extends State<ReservedTimer> {
   Widget build(BuildContext context) {
     if (remaining.inSeconds <= 0) {
       return const Text(
-        "Reservasjon utløpt",
+        'Reservasjon utløpt',
         style: TextStyle(
-          color: Colors.red,
+          color: Color(0xFFDC2626),
           fontWeight: FontWeight.w700,
         ),
       );
@@ -73,9 +72,9 @@ class _ReservedTimerState extends State<ReservedTimer> {
     final isUrgent = remaining.inSeconds < 60;
 
     return Text(
-      "Reservasjon utløper om ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}",
+      'Reservasjon utløper om ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
       style: TextStyle(
-        color: isUrgent ? Colors.red : Colors.orange,
+        color: isUrgent ? const Color(0xFFDC2626) : const Color(0xFFF59E0B),
         fontWeight: FontWeight.w700,
       ),
     );

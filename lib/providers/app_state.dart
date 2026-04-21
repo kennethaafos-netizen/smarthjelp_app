@@ -33,7 +33,6 @@ class TaxReportEntry {
 
   String get typeLabel =>
       type == TaxTransactionType.income ? 'Inntekt' : 'Kostnad';
-
   bool get isIncome => type == TaxTransactionType.income;
 }
 
@@ -52,6 +51,21 @@ class TaxReportSummary {
 
   double get net => totalIncome - totalExpenses;
   int get transactionCount => entries.length;
+}
+
+// 🔔 Lokal in-memory varsling (MVP).
+class AppNotification {
+  final String id;
+  final String text;
+  final DateTime createdAt;
+  final String? jobId;
+
+  const AppNotification({
+    required this.id,
+    required this.text,
+    required this.createdAt,
+    this.jobId,
+  });
 }
 
 class AppState extends ChangeNotifier {
@@ -75,7 +89,14 @@ class AppState extends ChangeNotifier {
   bool _hasLoadedJobs = false;
   String? _jobsError;
 
-  // 🔥 V2 FOUNDATION (distance + deterministic offset + preferences)
+  // 🔔 Notifications
+  final List<AppNotification> _notifications = [];
+  bool _hasUnreadNotifications = false;
+
+  // 🔒 Truthfulness: siste addJob — synkronisert mot Supabase?
+  bool _lastAddJobSyncedRemotely = false;
+
+  // V2 foundation
   static const double _markerSpread = 0.006;
   double _userLat = 59.14;
   double _userLng = 9.65;
@@ -86,6 +107,14 @@ class AppState extends ChangeNotifier {
   bool get isLoadingJobs => _isLoadingJobs;
   bool get hasLoadedJobs => _hasLoadedJobs;
   String? get jobsError => _jobsError;
+  bool get lastAddJobSyncedRemotely => _lastAddJobSyncedRemotely;
+
+  // 🔔 Notification getters
+  List<AppNotification> get notifications =>
+      List.unmodifiable(_notifications.reversed);
+  bool get hasUnreadNotifications => _hasUnreadNotifications;
+  int get unreadNotificationCount =>
+      _hasUnreadNotifications ? _notifications.length : 0;
 
   List<Job> get allJobsSortedByNewest {
     final copy = [..._jobs];
@@ -281,6 +310,11 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// LOCAL-FIRST:
+  /// `true` betyr at jobben er publisert i appen (lokalt).
+  /// Supabase-sync-status ligger i [lastAddJobSyncedRemotely].
+  /// Tidligere returnerte metoden false hvis Supabase feilet selv om
+  /// jobben allerede var synlig lokalt — det skapte misvisende UI.
   Future<bool> addJob({
     required String title,
     required String description,
@@ -292,6 +326,8 @@ class AppState extends ChangeNotifier {
     String? imageUrl,
     List<String>? imageUrls,
   }) async {
+    _lastAddJobSyncedRemotely = false;
+
     final job = Job(
       id: _uuid.v4(),
       title: title,
@@ -318,17 +354,13 @@ class AppState extends ChangeNotifier {
 
     notifyListeners();
 
-    bool savedOk = false;
-
     try {
       final saved = await _supabaseService.createJob(job);
 
       if (saved != null) {
         _replaceJobLocally(saved);
-        savedOk = true;
+        _lastAddJobSyncedRemotely = true;
 
-        // ⚠️ VIKTIG: kun legg til bilder hvis jobben faktisk ble lagret.
-        // Ellers får vi FK-violation på job_images.job_id.
         if (imageUrls != null && imageUrls.isNotEmpty) {
           await _supabaseService.addJobImages(
             jobId: saved.id,
@@ -337,11 +369,13 @@ class AppState extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('addJob error: $e');
+      debugPrint('addJob Supabase error (lokalt bevart): $e');
     }
 
     notifyListeners();
-    return savedOk;
+    // Local insert lyktes → returner true. UI leser
+    // lastAddJobSyncedRemotely for å si om remote gikk gjennom.
+    return true;
   }
 
   Future<bool> updateOwnJob({
@@ -434,6 +468,10 @@ class AppState extends ChangeNotifier {
       jobId: id,
       text: '${_currentUser.firstName} reserverte oppdraget.',
     );
+    _addNotification(
+      '${_currentUser.firstName} reserverte "${job.title}"',
+      jobId: id,
+    );
     notifyListeners();
 
     try {
@@ -468,6 +506,8 @@ class AppState extends ChangeNotifier {
     await _saveJobUpdate(
       updated,
       systemMessage: '${_currentUser.firstName} startet oppdraget.',
+      notification:
+          '${_currentUser.firstName} startet "${job.title}". Betalingen er reservert.',
     );
   }
 
@@ -491,6 +531,7 @@ class AppState extends ChangeNotifier {
       updated,
       systemMessage:
           '${_currentUser.firstName} markerte oppdraget som fullført. Venter på godkjenning fra oppdragsgiver.',
+      notification: '"${job.title}" er markert som fullført — venter på godkjenning.',
     );
   }
 
@@ -511,6 +552,7 @@ class AppState extends ChangeNotifier {
       updated,
       systemMessage:
           '${_currentUser.firstName} godkjente oppdraget. Klar for utbetaling via escrow/Stripe senere.',
+      notification: 'Betaling for "${job.title}" er godkjent og klar for utbetaling.',
     );
   }
 
@@ -536,6 +578,7 @@ class AppState extends ChangeNotifier {
     await _saveJobUpdate(
       updated,
       systemMessage: 'Reservasjonen ble opphevet.',
+      notification: 'Reservasjonen på "${job.title}" ble opphevet.',
     );
   }
 
@@ -560,6 +603,7 @@ class AppState extends ChangeNotifier {
     await _saveJobUpdate(
       updated,
       systemMessage: 'Reservasjonen utløp automatisk.',
+      notification: 'Reservasjonen på "${job.title}" utløp automatisk.',
     );
   }
 
@@ -571,8 +615,6 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
-    // OPEN: ingen motpart ennå. Eier sletter bare oppdraget direkte —
-    // ikke noe to-parts avbrytelses-flow.
     if (job.status == JobStatus.open) {
       if (isOwner) {
         await deleteOwnJob(id);
@@ -600,6 +642,8 @@ class AppState extends ChangeNotifier {
         updated,
         systemMessage:
             '${_currentUser.firstName} ba om å avbryte oppdraget.',
+        notification:
+            '${_currentUser.firstName} ba om å avbryte "${job.title}".',
       );
     }
   }
@@ -627,6 +671,7 @@ class AppState extends ChangeNotifier {
     await _saveJobUpdate(
       updated,
       systemMessage: 'Avbrytelsen ble godkjent. Oppdraget er åpnet igjen.',
+      notification: 'Avbrytelse av "${job.title}" ble godkjent.',
     );
   }
 
@@ -648,6 +693,8 @@ class AppState extends ChangeNotifier {
       updated,
       systemMessage:
           '${_currentUser.firstName} avslo avbrytelsen. Oppdraget fortsetter.',
+      notification:
+          '${_currentUser.firstName} avslo avbrytelsen av "${job.title}".',
     );
   }
 
@@ -728,6 +775,15 @@ class AppState extends ChangeNotifier {
       ),
     );
 
+    final job = getJobById(jobId);
+    final preview = trimmed.isNotEmpty
+        ? (trimmed.length > 40 ? '${trimmed.substring(0, 40)}…' : trimmed)
+        : '📷 Bilde';
+    _addNotification(
+      'Ny melding${job != null ? ' i "${job.title}"' : ''}: $preview',
+      jobId: jobId,
+    );
+
     notifyListeners();
   }
 
@@ -767,6 +823,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Brukes av onboarding for å sette rolle + sted uten å røre andre felt.
+  void applyOnboarding({
+    required bool wantsToWork,
+    required String preferredArea,
+  }) {
+    _currentUser = _currentUser.copyWith(
+      wantsToWork: wantsToWork,
+      preferredArea: preferredArea,
+    );
+    _users[_currentUser.id] = _currentUser;
+    notifyListeners();
+  }
+
   void switchUser() {
     final ids = _users.keys.toList();
     if (ids.length < 2) return;
@@ -793,17 +862,54 @@ class AppState extends ChangeNotifier {
       ratingCount: nextCount,
     );
 
+    _addNotification(
+      '${user.firstName} fikk ny vurdering: ${newRating.toStringAsFixed(1)}★',
+    );
+
+    notifyListeners();
+  }
+
+  // 🔔 Notification API
+
+  void markAllNotificationsRead() {
+    if (!_hasUnreadNotifications) return;
+    _hasUnreadNotifications = false;
+    notifyListeners();
+  }
+
+  void clearAllNotifications() {
+    if (_notifications.isEmpty && !_hasUnreadNotifications) return;
+    _notifications.clear();
+    _hasUnreadNotifications = false;
+    notifyListeners();
+  }
+
+  void _addNotification(String text, {String? jobId}) {
+    _notifications.add(
+      AppNotification(
+        id: _uuid.v4(),
+        text: text,
+        createdAt: DateTime.now(),
+        jobId: jobId,
+      ),
+    );
+    _hasUnreadNotifications = true;
     notifyListeners();
   }
 
   Future<void> _saveJobUpdate(
     Job updated, {
     String? systemMessage,
+    String? notification,
   }) async {
     _replaceJobLocally(updated);
 
     if (systemMessage != null && systemMessage.isNotEmpty) {
       _addSystemMessage(jobId: updated.id, text: systemMessage);
+    }
+
+    if (notification != null && notification.isNotEmpty) {
+      _addNotification(notification, jobId: updated.id);
     }
 
     notifyListeners();
@@ -843,9 +949,6 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  // 🔥 Gyldige UUID-er for seed-brukere. Supabase krever UUID-format
-  // på created_by_user_id / accepted_by_user_id — "1" og "2" feilet med
-  // "invalid input syntax for type uuid".
   static const String _seedOwnerId = '00000000-0000-0000-0000-000000000001';
   static const String _seedWorkerId = '00000000-0000-0000-0000-000000000002';
   static const String _seedJobId = '00000000-0000-0000-0000-000000000010';
@@ -899,9 +1002,7 @@ class AppState extends ChangeNotifier {
     ];
   }
 
-  // ============================================================
-  // 🔥 V2 FOUNDATION ADDITIONS (NEW METHODS ONLY — NOTHING REMOVED)
-  // ============================================================
+  // V2 foundation
 
   double get userLat => _userLat;
   double get userLng => _userLng;
@@ -911,8 +1012,6 @@ class AppState extends ChangeNotifier {
     _userLng = lng;
     notifyListeners();
   }
-
-  // ----- DISTANCE -----
 
   double jobDistance(Job job) {
     return _haversineMeters(
@@ -924,9 +1023,7 @@ class AppState extends ChangeNotifier {
   }
 
   String formatDistance(double meters) {
-    if (meters < 1000) {
-      return '${meters.round()} m unna';
-    }
+    if (meters < 1000) return '${meters.round()} m unna';
     final km = meters / 1000.0;
     return '${km.toStringAsFixed(1)} km unna';
   }
@@ -936,17 +1033,11 @@ class AppState extends ChangeNotifier {
     return '$d • ${job.locationName}';
   }
 
-  // ----- DETERMINISTIC MARKER OFFSET (no random jitter, no clustering) -----
+  double jobMarkerLat(Job job) =>
+      job.lat + _hashOffset(job.id, 0x9E37) * _markerSpread;
 
-  double jobMarkerLat(Job job) {
-    return job.lat + _hashOffset(job.id, 0x9E37) * _markerSpread;
-  }
-
-  double jobMarkerLng(Job job) {
-    return job.lng + _hashOffset(job.id, 0x85EB) * _markerSpread;
-  }
-
-  // ----- PREFERRED CATEGORIES -----
+  double jobMarkerLng(Job job) =>
+      job.lng + _hashOffset(job.id, 0x85EB) * _markerSpread;
 
   List<String> get userPreferredCategories =>
       List.unmodifiable(_preferredCategories);
@@ -964,8 +1055,6 @@ class AppState extends ChangeNotifier {
         .where((j) => _preferredCategories.contains(j.category))
         .toList();
   }
-
-  // ----- PRIVATE HELPERS -----
 
   double _deg2rad(double deg) => deg * (pi / 180);
 
