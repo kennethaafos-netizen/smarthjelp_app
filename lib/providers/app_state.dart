@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/chat_message.dart';
@@ -107,6 +108,7 @@ class AppState extends ChangeNotifier {
   AppState({SupabaseService? supabaseService})
       : _supabaseService = supabaseService ?? SupabaseService() {
     _seedUsers();
+    _currentUser = _guestProfile();
     _bootstrap();
   }
 
@@ -120,14 +122,15 @@ class AppState extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final Map<String, List<String>> _jobImages = {};
 
-  // Notifikasjoner er per mottaker (userId). Filtreres til currentUser i getters.
   final List<AppNotification> _notifications = [];
 
   bool _isLoadingJobs = false;
   bool _hasLoadedJobs = false;
   String? _jobsError;
 
-  // V2 FOUNDATION (distance + deterministic offset + preferences)
+  bool _isAuthenticated = false;
+  bool _isAuthLoading = true;
+
   static const double _markerSpread = 0.006;
   double _userLat = 59.14;
   double _userLng = 9.65;
@@ -139,7 +142,12 @@ class AppState extends ChangeNotifier {
   bool get hasLoadedJobs => _hasLoadedJobs;
   String? get jobsError => _jobsError;
 
-  // ---- NOTIFICATIONS (per current user) ----
+  bool get isAuthenticated => _isAuthenticated;
+  bool get isAuthLoading => _isAuthLoading;
+
+  SupabaseClient get _client => Supabase.instance.client;
+
+  // ---- NOTIFICATIONS ----
 
   List<AppNotification> get notifications {
     final mine = _notifications
@@ -182,7 +190,6 @@ class AppState extends ChangeNotifier {
     if (_notifications.length != before) notifyListeners();
   }
 
-  // Alias for clearNotifications — brukes av eldre kall i UI.
   void clearAllNotifications() => clearNotifications();
 
   void _pushNotification({
@@ -221,9 +228,201 @@ class AppState extends ChangeNotifier {
       _jobs.where((j) => j.acceptedByUserId == _currentUser.id).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+  // ---- AUTH ----
+
   Future<void> _bootstrap() async {
-    await ensureJobsLoaded();
+    await loadCurrentUser();
+    if (_isAuthenticated) {
+      await ensureJobsLoaded();
+    }
   }
+
+  Future<void> loadCurrentUser() async {
+    _isAuthLoading = true;
+    notifyListeners();
+
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      _currentUser = _guestProfile();
+      _isAuthenticated = false;
+      _isAuthLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    _currentUser = _profileFromAuthUser(user);
+    _users[_currentUser.id] = _currentUser;
+    _isAuthenticated = true;
+    _isAuthLoading = false;
+    notifyListeners();
+  }
+
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty || password.isEmpty) {
+      return 'Fyll inn e-post og passord.';
+    }
+
+    try {
+      final res = await _client.auth.signInWithPassword(
+        email: trimmedEmail,
+        password: password,
+      );
+      if (res.user == null) {
+        return 'Feil e-post eller passord.';
+      }
+      await loadCurrentUser();
+      await ensureJobsLoaded();
+      return null;
+    } on AuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      debugPrint('login error: $e');
+      return 'Noe gikk galt. Prøv igjen.';
+    }
+  }
+
+  Future<String?> register({
+    required String email,
+    required String password,
+    required String name,
+    bool wantsToWork = true,
+    String preferredArea = '',
+  }) async {
+    final trimmedEmail = email.trim();
+    final trimmedName = name.trim();
+    if (trimmedEmail.isEmpty || password.isEmpty || trimmedName.isEmpty) {
+      return 'Fyll inn navn, e-post og passord.';
+    }
+    if (password.length < 6) {
+      return 'Passordet må være minst 6 tegn.';
+    }
+
+    try {
+      final res = await _client.auth.signUp(
+        email: trimmedEmail,
+        password: password,
+        data: {
+          'first_name': trimmedName,
+          'wants_to_work': wantsToWork,
+          'preferred_area': preferredArea,
+        },
+      );
+
+      if (res.user == null) {
+        return 'Kunne ikke opprette bruker.';
+      }
+
+      if (res.session == null) {
+        // Bekreftelse på e-post er skrudd på i Supabase — brukeren må verifisere.
+        return 'Vi har sendt en bekreftelsesepost. Bekreft den og logg inn.';
+      }
+
+      await loadCurrentUser();
+      await ensureJobsLoaded();
+      return null;
+    } on AuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      debugPrint('register error: $e');
+      return 'Noe gikk galt. Prøv igjen.';
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await _client.auth.signOut();
+    } catch (e) {
+      debugPrint('signOut error: $e');
+    }
+    _resetStateAfterLogout();
+    notifyListeners();
+  }
+
+  void _resetStateAfterLogout() {
+    _currentUser = _guestProfile();
+    _isAuthenticated = false;
+    _isAuthLoading = false;
+    _jobs = [];
+    _hasLoadedJobs = false;
+    _jobsError = null;
+    _notifications.clear();
+    _messages.clear();
+    _jobImages.clear();
+    _preferredCategories.clear();
+  }
+
+  UserProfile _profileFromAuthUser(User user) {
+    final md = user.userMetadata ?? const <String, dynamic>{};
+    final fallbackName = (user.email ?? '').split('@').first;
+    final firstName =
+        (md['first_name'] ?? md['name'] ?? fallbackName).toString().trim();
+    final phone = (md['phone'] ?? user.phone ?? '').toString();
+    final wantsToWork =
+        md['wants_to_work'] is bool ? md['wants_to_work'] as bool : true;
+    final preferredArea = (md['preferred_area'] ?? '').toString();
+
+    DateTime created;
+    try {
+      created = DateTime.parse(user.createdAt);
+    } catch (_) {
+      created = DateTime.now();
+    }
+
+    return UserProfile(
+      id: user.id,
+      firstName: firstName.isEmpty ? 'Bruker' : firstName,
+      email: user.email ?? '',
+      phone: phone,
+      wantsToWork: wantsToWork,
+      preferredArea: preferredArea,
+      rating: 5.0,
+      ratingCount: 0,
+      pushNotificationsEnabled: true,
+      createdAt: created,
+      isVerified: user.emailConfirmedAt != null,
+    );
+  }
+
+  UserProfile _guestProfile() {
+    return UserProfile(
+      id: '',
+      firstName: 'Gjest',
+      email: '',
+      phone: '',
+      wantsToWork: false,
+      preferredArea: '',
+      rating: 0,
+      ratingCount: 0,
+      pushNotificationsEnabled: false,
+      createdAt: DateTime.now(),
+      isVerified: false,
+    );
+  }
+
+  Future<void> _syncProfileToSupabase() async {
+    if (!_isAuthenticated) return;
+    try {
+      await _client.auth.updateUser(
+        UserAttributes(
+          data: {
+            'first_name': _currentUser.firstName,
+            'phone': _currentUser.phone,
+            'wants_to_work': _currentUser.wantsToWork,
+            'preferred_area': _currentUser.preferredArea,
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('profile sync error: $e');
+    }
+  }
+
+  // ---- JOBS ----
 
   Future<void> ensureJobsLoaded() async {
     if (_isLoadingJobs) return;
@@ -710,7 +909,6 @@ class AppState extends ChangeNotifier {
       systemMessage: 'Reservasjonen utløp automatisk.',
     );
 
-    // Varsle begge parter separat for utløp.
     if (previousWorker != null) {
       _pushNotification(
         recipientUserId: previousWorker,
@@ -738,7 +936,6 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
-    // OPEN: ingen motpart ennå. Eier sletter bare oppdraget direkte.
     if (job.status == JobStatus.open) {
       if (isOwner) {
         await deleteOwnJob(id);
@@ -913,7 +1110,6 @@ class AppState extends ChangeNotifier {
       ),
     );
 
-    // Varsle motparten på jobben, ikke deg selv.
     final job = getJobById(jobId);
     if (job != null) {
       final otherParty = job.createdByUserId == _currentUser.id
@@ -967,10 +1163,9 @@ class AppState extends ChangeNotifier {
     );
     _users[_currentUser.id] = _currentUser;
     notifyListeners();
+    _syncProfileToSupabase();
   }
 
-  // Persisterer valgene fra onboardingen tilbake til AppState.
-  // Kalles fra OnboardingScreen før navigasjon til /home.
   void applyOnboarding({
     required bool wantsToWork,
     required String preferredArea,
@@ -981,19 +1176,11 @@ class AppState extends ChangeNotifier {
     );
     _users[_currentUser.id] = _currentUser;
     notifyListeners();
+    _syncProfileToSupabase();
   }
 
   void switchUser() {
-    final ids = _users.keys.toList();
-    if (ids.length < 2) return;
-
-    final next = ids.firstWhere(
-      (id) => id != _currentUser.id,
-      orElse: () => _currentUser.id,
-    );
-
-    _currentUser = _users[next]!;
-    notifyListeners();
+    // No-op: Ekte auth er aktivert. Bytte bruker gjøres via logg ut + logg inn.
   }
 
   void rateUser({required String userId, required double newRating}) {
@@ -1080,6 +1267,8 @@ class AppState extends ChangeNotifier {
   static const String _seedJobId = '00000000-0000-0000-0000-000000000010';
 
   void _seedUsers() {
+    final now = DateTime.now();
+
     final owner = UserProfile(
       id: _seedOwnerId,
       firstName: 'Anders',
@@ -1090,6 +1279,8 @@ class AppState extends ChangeNotifier {
       rating: 4.5,
       ratingCount: 10,
       pushNotificationsEnabled: true,
+      createdAt: now,
+      isVerified: false,
     );
 
     final worker = UserProfile(
@@ -1102,11 +1293,12 @@ class AppState extends ChangeNotifier {
       rating: 5,
       ratingCount: 1,
       pushNotificationsEnabled: true,
+      createdAt: now,
+      isVerified: false,
     );
 
     _users[owner.id] = owner;
     _users[worker.id] = worker;
-    _currentUser = worker;
   }
 
   List<Job> _buildSeedJobs() {

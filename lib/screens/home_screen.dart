@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
 import 'job_detail_screen.dart';
 import 'notification_screen.dart';
+import 'onboarding_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(int)? onNavigate;
@@ -23,7 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  String? _selectedCategory;
+  // Lokal kategori-filter state (ikke lagret i AppState)
+  String? _selectedCategory; // null = Alle
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
@@ -69,10 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _categoryChipsRow(),
             const SizedBox(height: 12),
 
+            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
 
+            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -492,32 +497,112 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _avatar(String name) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: const BoxDecoration(
-        color: _primary,
-        shape: BoxShape.circle,
+    return PopupMenuButton<String>(
+      tooltip: 'Min konto',
+      offset: const Offset(0, 56),
+      color: Colors.white,
+      elevation: 10,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: _textMuted.withOpacity(0.12)),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 18,
+      onSelected: _handleMenuSelection,
+      itemBuilder: (_) => [
+        _menuEntry('profile', Icons.person_outline_rounded, 'Min side'),
+        _menuEntry('settings', Icons.settings_outlined, 'Innstillinger'),
+        _menuEntry('contact', Icons.mail_outline_rounded, 'Kontakt oss'),
+        _menuEntry('faq', Icons.help_outline_rounded, 'FAQ'),
+        const PopupMenuDivider(height: 8),
+        _menuEntry(
+          'logout',
+          Icons.logout_rounded,
+          'Logg ut',
+          isDanger: true,
+        ),
+      ],
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: const BoxDecoration(
+          color: _primary,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
         ),
       ),
+    );
+  }
+
+  PopupMenuItem<String> _menuEntry(
+    String value,
+    IconData icon,
+    String label, {
+    bool isDanger = false,
+  }) {
+    final color = isDanger ? const Color(0xFFDC2626) : _textPrimary;
+    return PopupMenuItem<String>(
+      value: value,
+      height: 44,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleMenuSelection(String value) {
+    switch (value) {
+      case 'profile':
+        widget.onNavigate?.call(4);
+        break;
+      case 'settings':
+      case 'contact':
+      case 'faq':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kommer snart'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        break;
+      case 'logout':
+        _logout();
+        break;
+    }
+  }
+
+  Future<void> _logout() async {
+    final navigator = Navigator.of(context);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('onboarding_done');
+    if (!mounted) return;
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      (_) => false,
     );
   }
 
   Widget _countPill(int count) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() {
-        _showMap = false;
-        _selectedJob = null;
-      }),
+      onTap: () => widget.onNavigate?.call(1),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(

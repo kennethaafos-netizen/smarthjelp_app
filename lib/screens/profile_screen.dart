@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -32,6 +31,27 @@ class ProfileScreen extends StatelessWidget {
 
     final reservedJobs =
         activeTaken.where((j) => j.status == JobStatus.reserved).length;
+
+    final profileRows = <Widget>[
+      _infoRow('Navn', user.firstName),
+      _infoRow('E-post', user.email),
+    ];
+
+    if (user.phone.isNotEmpty) {
+      profileRows.add(_infoRow('Telefon', user.phone));
+    }
+
+    if (user.preferredArea.isNotEmpty) {
+      profileRows.add(_infoRow('Område', user.preferredArea));
+    }
+
+    profileRows.add(
+      _infoRow(
+        'Vil ta oppdrag',
+        user.wantsToWork ? 'Ja' : 'Nei',
+        isLast: true,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: _bg,
@@ -101,21 +121,7 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _section(
                 title: 'Profil',
-                child: Column(
-                  children: [
-                    _infoRow('Navn', user.firstName),
-                    _infoRow('E-post',
-                        user.email.isEmpty ? 'Ikke satt' : user.email),
-                    _infoRow('Telefon',
-                        user.phone.isEmpty ? 'Ikke satt' : user.phone),
-                    _infoRow('Område', user.preferredArea),
-                    _infoRow(
-                      'Vil ta oppdrag',
-                      user.wantsToWork ? 'Ja' : 'Nei',
-                      isLast: true,
-                    ),
-                  ],
-                ),
+                child: Column(children: profileRows),
               ),
               const SizedBox(height: 16),
               _primaryActionButton(
@@ -124,7 +130,9 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const ExportScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const ExportScreen(),
+                    ),
                   );
                 },
               ),
@@ -135,20 +143,14 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const AccountScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const AccountScreen(),
+                    ),
                   );
                 },
               ),
-              // 🔒 Test-knappen er kun synlig i debug-builds.
-              if (kDebugMode) ...[
-                const SizedBox(height: 12),
-                _outlinedActionButton(
-                  label: 'Bytt bruker (test)',
-                  onTap: () {
-                    context.read<AppState>().switchUser();
-                  },
-                ),
-              ],
+              const SizedBox(height: 12),
+              _logoutButton(context),
             ],
           ),
         ),
@@ -156,8 +158,9 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- HEADER ----------
   Widget _header(BuildContext context, UserProfile user) {
-    final isVerified = user.email.isNotEmpty && user.phone.isNotEmpty;
+    final isVerified = user.isVerified;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
@@ -176,82 +179,85 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 72,
-            height: 72,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.35),
-                width: 1.5,
-              ),
-            ),
-            child: Text(
-              user.firstName.isNotEmpty
-                  ? user.firstName[0].toUpperCase()
-                  : '?',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user.firstName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.35),
+                    width: 1.5,
+                  ),
+                ),
+                child: Text(
+                  user.firstName.isNotEmpty
+                      ? user.firstName[0].toUpperCase()
+                      : '?',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: 28,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.92),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      color: Color(0xFFFFD166),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 4),
                     Text(
-                      '${user.rating.toStringAsFixed(1)} (${user.ratingCount})',
+                      user.firstName,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.92),
+                        fontWeight: FontWeight.w600,
                         fontSize: 13.5,
                       ),
                     ),
-                    if (isVerified) ...[
-                      const SizedBox(width: 8),
-                      _verifiedPill(),
-                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFFFFD166),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${user.rating.toStringAsFixed(1)} (${user.ratingCount})',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        if (isVerified) ...[
+                          const SizedBox(width: 8),
+                          _verifiedPill(),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              _editChip(context),
+            ],
           ),
-          _editChip(context),
         ],
       ),
     );
@@ -262,7 +268,9 @@ class ProfileScreen extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const AccountScreen()),
+          MaterialPageRoute(
+            builder: (_) => const AccountScreen(),
+          ),
         );
       },
       child: Container(
@@ -319,6 +327,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- STATUS ROW ----------
   Widget _statusRow(
     BuildContext context, {
     required String label,
@@ -344,7 +353,10 @@ class ProfileScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: accent.withOpacity(0.09),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withOpacity(0.18), width: 1),
+            border: Border.all(
+              color: accent.withOpacity(0.18),
+              width: 1,
+            ),
           ),
           child: Row(
             children: [
@@ -368,7 +380,8 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: accent.withOpacity(0.16),
                   borderRadius: BorderRadius.circular(999),
@@ -383,8 +396,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded,
-                  color: _muted.withOpacity(0.8)),
+              Icon(Icons.chevron_right_rounded, color: _muted.withOpacity(0.8)),
             ],
           ),
         ),
@@ -392,6 +404,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- EARNINGS / STATS ----------
   Widget _earningsCard({
     required double earned,
     required double spent,
@@ -402,17 +415,27 @@ class ProfileScreen extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _miniStat('Tjent', '${earned.toStringAsFixed(0)} kr',
-                color: _safeGreen),
+            child: _miniStat(
+              'Tjent',
+              '${earned.toStringAsFixed(0)} kr',
+              color: _safeGreen,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _miniStat('Brukt', '${spent.toStringAsFixed(0)} kr',
-                color: _primary),
+            child: _miniStat(
+              'Brukt',
+              '${spent.toStringAsFixed(0)} kr',
+              color: _primary,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _miniStat('Fullført', '$completed', color: _accent),
+            child: _miniStat(
+              'Fullført',
+              '$completed',
+              color: _accent,
+            ),
           ),
         ],
       ),
@@ -457,6 +480,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- PUSH TOGGLE ----------
   Widget _switchCard({
     required bool value,
     required ValueChanged<bool> onChanged,
@@ -514,6 +538,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- INFO ROW ----------
   Widget _infoRow(String label, String value, {bool isLast = false}) {
     return Padding(
       padding: EdgeInsets.only(top: 10, bottom: isLast ? 0 : 10),
@@ -557,6 +582,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- ACTION BUTTONS ----------
   Widget _primaryActionButton({
     required IconData icon,
     required String label,
@@ -595,19 +621,19 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _outlinedActionButton({
-    required String label,
-    required VoidCallback onTap,
-  }) {
+  Widget _logoutButton(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => context.read<AppState>().logout(),
       child: Container(
         height: 50,
         alignment: Alignment.center,
@@ -615,14 +641,14 @@ class ProfileScreen extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: _primary.withOpacity(0.25),
+            color: const Color(0xFFDC2626).withOpacity(0.25),
             width: 1.2,
           ),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: _primary,
+        child: const Text(
+          'Logg ut',
+          style: TextStyle(
+            color: Color(0xFFDC2626),
             fontWeight: FontWeight.w800,
             fontSize: 14.5,
           ),
@@ -631,7 +657,11 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _section({required String title, required Widget child}) {
+  // ---------- SECTION WRAPPER ----------
+  Widget _section({
+    required String title,
+    required Widget child,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -670,7 +700,10 @@ class _JobListScreen extends StatelessWidget {
   final String title;
   final List<Job> jobs;
 
-  const _JobListScreen({required this.title, required this.jobs});
+  const _JobListScreen({
+    required this.title,
+    required this.jobs,
+  });
 
   Widget _statusBadge(JobStatus status) {
     Color color;
