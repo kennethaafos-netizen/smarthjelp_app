@@ -1,3 +1,4 @@
+// UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,6 @@ const Color _bg = Color(0xFFF4F7FC);
 const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
 const Color _online = Color(0xFF0EA877);
-const Color _bubbleBorder = Color(0xFFE6EAF2);
 
 class ChatScreen extends StatefulWidget {
   final Job job;
@@ -149,6 +149,21 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Flere valg',
+            icon: const Icon(Icons.more_horiz_rounded),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text('Flere valg kommer snart.'),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Column(
         children: [
@@ -203,19 +218,8 @@ class _ChatScreenState extends State<ChatScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4F7BFF), _accent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: _primary,
               borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: _primary.withOpacity(0.22),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             alignment: Alignment.center,
             child: Text(
@@ -271,7 +275,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: _primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -288,7 +293,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -320,7 +326,8 @@ class _ChatScreenState extends State<ChatScreen> {
               const Spacer(),
               InkResponse(
                 radius: 20,
-                onTap: () => setState(() => _summaryExpanded = !_summaryExpanded),
+                onTap: () =>
+                    setState(() => _summaryExpanded = !_summaryExpanded),
                 child: AnimatedRotation(
                   duration: const Duration(milliseconds: 180),
                   turns: _summaryExpanded ? 0.5 : 0,
@@ -348,7 +355,8 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.place_outlined, size: 15, color: _textMuted),
+                const Icon(Icons.place_outlined,
+                    size: 15, color: _textMuted),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -364,13 +372,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_primary, _accent],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: _primary,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -443,7 +448,8 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            icon: const Icon(Icons.close_rounded, color: _textMuted, size: 20),
+            icon: const Icon(Icons.close_rounded,
+                color: _textMuted, size: 20),
             onPressed: () => setState(() => _replyTo = null),
           ),
         ],
@@ -464,9 +470,15 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: _bubbleBorder),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 14,
+                  ),
+                ],
               ),
-              child: const Icon(Icons.forum_outlined, color: _primary, size: 34),
+              child: const Icon(Icons.forum_outlined,
+                  color: _primary, size: 34),
             ),
             const SizedBox(height: 14),
             const Text(
@@ -543,7 +555,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
@@ -551,11 +564,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4F7BFF), _accent],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: _primary,
                 borderRadius: BorderRadius.circular(9),
               ),
               alignment: Alignment.center,
@@ -588,27 +597,17 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
                   constraints: const BoxConstraints(maxWidth: 280),
                   decoration: BoxDecoration(
-                    color: isMe ? null : Colors.white,
-                    gradient: isMe
-                        ? const LinearGradient(
-                            colors: [_primary, _accent],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
+                    color: isMe ? _primary : Colors.white,
                     borderRadius: borderRadius,
-                    border: isMe ? null : Border.all(color: _bubbleBorder),
                     boxShadow: [
                       BoxShadow(
-                        color: isMe
-                            ? _primary.withOpacity(0.22)
-                            : Colors.black.withOpacity(0.04),
-                        blurRadius: isMe ? 14 : 8,
-                        offset: Offset(0, isMe ? 6 : 2),
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -681,8 +680,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (msg.reaction != null) ...[
-                            Text(msg.reaction!,
-                                style: const TextStyle(fontSize: 13)),
+                            Text(
+                              msg.reaction!,
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             const SizedBox(width: 6),
                           ],
                           Text(
@@ -722,12 +723,13 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            _attachButton(),
+            const SizedBox(width: 8),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: _bubbleBorder),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.04),
@@ -736,34 +738,88 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: _ctrl,
-                  textInputAction: TextInputAction.send,
-                  minLines: 1,
-                  maxLines: 5,
-                  onSubmitted: (_) => _handleSend(),
-                  style: const TextStyle(
-                    color: _textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: 'Skriv en melding…',
-                    hintStyle: TextStyle(
-                      color: _textMuted,
-                      fontWeight: FontWeight.w500,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        textInputAction: TextInputAction.send,
+                        minLines: 1,
+                        maxLines: 5,
+                        onSubmitted: (_) => _handleSend(),
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Skriv en melding…',
+                          hintStyle: TextStyle(
+                            color: _textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 14,
+                          ),
+                        ),
+                      ),
                     ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
+                    InkResponse(
+                      radius: 22,
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            behavior: SnackBarBehavior.floating,
+                            content: Text('Kamera kommer snart.'),
+                          ),
+                        );
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(4, 10, 12, 10),
+                        child: Icon(
+                          Icons.camera_alt_outlined,
+                          color: _textMuted,
+                          size: 22,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(width: 8),
             _sendButton(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _attachButton() {
+    return InkResponse(
+      radius: 24,
+      onTap: _showAttachmentSheet,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.add_rounded,
+          color: _primary,
+          size: 24,
         ),
       ),
     );
@@ -781,21 +837,135 @@ class _ChatScreenState extends State<ChatScreen> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [_primary, _accent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: _primary,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: _primary.withOpacity(0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
           ),
-          child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+          child: const Icon(Icons.send_rounded,
+              color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  void _showAttachmentSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _textMuted.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Legg til',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: _textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _attachTile(
+                  icon: Icons.photo_library_outlined,
+                  color: _primary,
+                  title: 'Bilde fra galleri',
+                  subtitle: 'Del et bilde av stedet',
+                ),
+                _attachTile(
+                  icon: Icons.place_outlined,
+                  color: _accent,
+                  title: 'Del lokasjon',
+                  subtitle: 'Send inn en pinn på kartet',
+                ),
+                _attachTile(
+                  icon: Icons.calendar_today_outlined,
+                  color: const Color(0xFFF59E0B),
+                  title: 'Foreslå tidspunkt',
+                  subtitle: 'Avtal når dere møtes',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _attachTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('$title kommer snart.'),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: _textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: _textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _textMuted),
+          ],
         ),
       ),
     );

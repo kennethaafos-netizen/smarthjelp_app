@@ -182,6 +182,9 @@ class AppState extends ChangeNotifier {
     if (_notifications.length != before) notifyListeners();
   }
 
+  // Alias for clearNotifications — brukes av eldre kall i UI.
+  void clearAllNotifications() => clearNotifications();
+
   void _pushNotification({
     required String recipientUserId,
     required AppNotificationType type,
@@ -539,7 +542,7 @@ class AppState extends ChangeNotifier {
       acceptedByUserId: _currentUser.id,
       reservedAt: DateTime.now(),
       cancelRequestedByUserId: null,
-      isPaymentReserved: false,
+      isPaymentReserved: true,
       isCompletedByWorker: false,
       isApprovedByOwner: false,
     );
@@ -966,6 +969,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Persisterer valgene fra onboardingen tilbake til AppState.
+  // Kalles fra OnboardingScreen før navigasjon til /home.
+  void applyOnboarding({
+    required bool wantsToWork,
+    required String preferredArea,
+  }) {
+    _currentUser = _currentUser.copyWith(
+      wantsToWork: wantsToWork,
+      preferredArea: preferredArea,
+    );
+    _users[_currentUser.id] = _currentUser;
+    notifyListeners();
+  }
+
   void switchUser() {
     final ids = _users.keys.toList();
     if (ids.length < 2) return;
@@ -1069,7 +1086,7 @@ class AppState extends ChangeNotifier {
       email: '',
       phone: '',
       wantsToWork: false,
-      preferredArea: '3717 Skien',
+      preferredArea: 'Skien',
       rating: 4.5,
       ratingCount: 10,
       pushNotificationsEnabled: true,
@@ -1081,7 +1098,7 @@ class AppState extends ChangeNotifier {
       email: '',
       phone: '',
       wantsToWork: true,
-      preferredArea: '3717 Skien',
+      preferredArea: 'Skien',
       rating: 5,
       ratingCount: 1,
       pushNotificationsEnabled: true,
@@ -1100,7 +1117,7 @@ class AppState extends ChangeNotifier {
         description: 'Trenger hjelp med å bære ved inn i boden.',
         price: 300,
         category: 'Hage',
-        locationName: '3717 Skien',
+        locationName: 'Skien',
         lat: 59.2096,
         lng: 9.6089,
         createdByUserId: _seedOwnerId,

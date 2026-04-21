@@ -23,8 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  // Lokal kategori-filter state (ikke lagret i AppState)
-  String? _selectedCategory; // null = Alle
+  String? _selectedCategory;
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
@@ -70,12 +69,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _categoryChipsRow(),
             const SizedBox(height: 12),
 
-            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
 
-            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -110,12 +107,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _categories.length + 1,
+        itemCount: _categories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          if (index == _categories.length) {
-            return _layersMiniButton();
-          }
           final opt = _categories[index];
           final isAll = opt.label == 'Alle';
           final active = isAll
@@ -175,105 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _layersMiniButton() {
-    return GestureDetector(
-      onTap: () => _showMoreFiltersSheet(),
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: _textMuted.withOpacity(0.18),
-            width: 1.1,
-          ),
-        ),
-        child: const Icon(
-          Icons.tune_rounded,
-          size: 18,
-          color: _textPrimary,
-        ),
-      ),
-    );
-  }
-
-  void _showMoreFiltersSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _textMuted.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Flere filtre',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: _textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Sortering og avanserte filtre kommer snart.',
-                  style: TextStyle(
-                    color: _textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
-                      'OK',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -617,28 +512,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _countPill(int count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: _accent.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.bolt_rounded, size: 14, color: _accent),
-          const SizedBox(width: 6),
-          Text(
-            count == 1
-                ? '1 oppdrag tilgjengelig'
-                : '$count oppdrag tilgjengelig',
-            style: const TextStyle(
-              color: _accent,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        _showMap = false;
+        _selectedJob = null;
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: _accent.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bolt_rounded, size: 14, color: _accent),
+            const SizedBox(width: 6),
+            Text(
+              count == 1
+                  ? '1 oppdrag tilgjengelig'
+                  : '$count oppdrag tilgjengelig',
+              style: const TextStyle(
+                color: _accent,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

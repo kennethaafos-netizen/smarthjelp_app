@@ -5,11 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../data/dummy_data.dart';
+import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../services/supabase_service.dart';
 
 class PostJobScreen extends StatefulWidget {
-  const PostJobScreen({super.key});
+  final Job? existingJob;
+
+  const PostJobScreen({super.key, this.existingJob});
 
   @override
   State<PostJobScreen> createState() => _PostJobScreenState();
@@ -19,25 +22,57 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final _title = TextEditingController();
   final _desc = TextEditingController();
   final _price = TextEditingController();
+  final _postcode = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   final PageController _controller = PageController();
 
   String? category;
-  String? location;
 
   List<XFile> images = [];
   int currentIndex = 0;
   bool _isSubmitting = false;
+
+  String? _editKommune;
+
+  bool get _isEditing => widget.existingJob != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final job = widget.existingJob;
+    if (job != null) {
+      _title.text = job.title;
+      _desc.text = job.description;
+      _price.text = job.price.toString();
+      category = job.category;
+      _editKommune = kLocations.contains(job.locationName)
+          ? job.locationName
+          : kLocations.first;
+    }
+  }
 
   @override
   void dispose() {
     _title.dispose();
     _desc.dispose();
     _price.dispose();
+    _postcode.dispose();
     _controller.dispose();
     super.dispose();
   }
+
+  String? _kommuneForPostcode(String raw) {
+    final p = int.tryParse(raw.trim());
+    if (p == null) return null;
+    if (p >= 3700 && p <= 3747) return 'Skien';
+    if (p >= 3748 && p <= 3749) return 'Siljan';
+    if (p >= 3900 && p <= 3949) return 'Porsgrunn';
+    if (p >= 3950 && p <= 3999) return 'Bamble';
+    return null;
+  }
+
+  String? get _derivedKommune => _kommuneForPostcode(_postcode.text);
 
   int get _priceValue => int.tryParse(_price.text.trim()) ?? 0;
   double get _feeValue => _priceValue * 0.10;
@@ -46,13 +81,20 @@ class _PostJobScreenState extends State<PostJobScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Legg ut oppdrag')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Rediger oppdrag' : 'Legg ut oppdrag'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).padding.bottom + 140,
+          ),
           children: [
-            _imagePicker(),
+            if (!_isEditing) _imagePicker(),
             _field(_title, 'Tittel'),
             _field(_desc, 'Beskrivelse', maxLines: 4),
             _field(
@@ -115,12 +157,15 @@ class _PostJobScreenState extends State<PostJobScreen> {
               'Kategori',
               (v) => setState(() => category = v),
             ),
-            _dropdown(
-              kLocations,
-              location,
-              'Sted (postnr. + sted)',
-              (v) => setState(() => location = v),
-            ),
+            if (_isEditing)
+              _dropdown(
+                kLocations,
+                _editKommune,
+                'Kommune',
+                (v) => setState(() => _editKommune = v),
+              )
+            else
+              _postcodeField(),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
@@ -130,7 +175,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Publiser'),
+                  : Text(_isEditing ? 'Lagre endringer' : 'Publiser'),
             ),
           ],
         ),
@@ -269,7 +314,26 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (category == null || location == null) return;
+    if (category == null) return;
+
+    final String kommune;
+    if (_isEditing) {
+      if (_editKommune == null) return;
+      kommune = _editKommune!;
+    } else {
+      final derived = _derivedKommune;
+      if (derived == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Postnummeret er ikke i SmartHjelp sitt dekningsområde (Skien, Porsgrunn, Siljan, Bamble).',
+            ),
+          ),
+        );
+        return;
+      }
+      kommune = derived;
+    }
 
     final parsedPrice = int.tryParse(_price.text.trim());
     if (parsedPrice == null || parsedPrice <= 0) {
@@ -283,66 +347,104 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     try {
       final appState = context.read<AppState>();
-      final supabase = SupabaseService();
 
-      final urls = <String>[];
+      if (_isEditing) {
+        final ok = await appState.updateOwnJob(
+          jobId: widget.existingJob!.id,
+          title: _title.text.trim(),
+          description: _desc.text.trim(),
+          price: parsedPrice,
+          category: category!,
+          locationName: kommune,
+          lat: _latForLocation(kommune),
+          lng: _lngForLocation(kommune),
+        );
 
-      for (final img in images) {
-        try {
-          final bytes = await img.readAsBytes();
+        if (!mounted) return;
 
-          final url = await supabase.uploadJobImage(
-            bytes: bytes,
-            originalFileName: img.name,
+        if (ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Oppdrag oppdatert')),
+          );
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Kunne ikke oppdatere oppdraget.'),
+            ),
+          );
+        }
+      } else {
+        final supabase = SupabaseService();
+        final urls = <String>[];
+        final localFallbacks = <String>[];
+
+        for (final img in images) {
+          try {
+            final bytes = await img.readAsBytes();
+
+            final url = await supabase.uploadJobImage(
+              bytes: bytes,
+              originalFileName: img.name,
+            );
+
+            if (url != null) {
+              urls.add(url);
+            } else if (!kIsWeb && img.path.isNotEmpty) {
+              localFallbacks.add(img.path);
+            }
+          } catch (e) {
+            debugPrint('Upload error: $e');
+            if (!kIsWeb && img.path.isNotEmpty) {
+              localFallbacks.add(img.path);
+            }
+          }
+        }
+
+        final allUrls = [...urls, ...localFallbacks];
+
+        final ok = await appState.addJob(
+          title: _title.text.trim(),
+          description: _desc.text.trim(),
+          price: parsedPrice,
+          locationName: kommune,
+          lat: _latForLocation(kommune),
+          lng: _lngForLocation(kommune),
+          category: category!,
+          imageUrl: allUrls.isNotEmpty ? allUrls.first : null,
+          imageUrls: allUrls,
+        );
+
+        if (ok) {
+          await appState.reloadJobs();
+        }
+
+        if (!mounted) return;
+
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.',
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Oppdrag publisert')),
           );
 
-          if (url != null) urls.add(url);
-        } catch (e) {
-          debugPrint('Upload error: $e');
+          _title.clear();
+          _desc.clear();
+          _price.clear();
+          _postcode.clear();
+
+          setState(() {
+            images = [];
+            category = null;
+            currentIndex = 0;
+          });
         }
-      }
-
-      final ok = await appState.addJob(
-        title: _title.text.trim(),
-        description: _desc.text.trim(),
-        price: parsedPrice,
-        locationName: location!,
-        lat: _latForLocation(location!),
-        lng: _lngForLocation(location!),
-        category: category!,
-        imageUrl: urls.isNotEmpty ? urls.first : null,
-        imageUrls: urls,
-      );
-
-      if (ok) {
-        await appState.reloadJobs();
-      }
-
-      if (!mounted) return;
-
-      if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.',
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Oppdrag publisert')),
-        );
-
-        _title.clear();
-        _desc.clear();
-        _price.clear();
-
-        setState(() {
-          images = [];
-          category = null;
-          location = null;
-          currentIndex = 0;
-        });
       }
     } catch (e) {
       debugPrint('Submit error: $e');
@@ -380,6 +482,56 @@ class _PostJobScreenState extends State<PostJobScreen> {
     );
   }
 
+  Widget _postcodeField() {
+    final kommune = _derivedKommune;
+    final hasInput = _postcode.text.trim().isNotEmpty;
+    final isValid = kommune != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: _postcode,
+            keyboardType: TextInputType.number,
+            maxLength: 4,
+            onChanged: (_) => setState(() {}),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return 'Postnummer må fylles ut';
+              }
+              if (_kommuneForPostcode(v) == null) {
+                return 'Postnummeret er utenfor dekningsområdet';
+              }
+              return null;
+            },
+            decoration: const InputDecoration(
+              hintText: 'Postnummer (f.eks. 3717)',
+              counterText: '',
+            ),
+          ),
+          if (hasInput)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                isValid
+                    ? 'Kommune: $kommune'
+                    : 'Utenfor dekningsområdet (Skien, Porsgrunn, Siljan, Bamble)',
+                style: TextStyle(
+                  color: isValid
+                      ? const Color(0xFF0EA877)
+                      : const Color(0xFFDC2626),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _dropdown(
     List<String> list,
     String? value,
@@ -402,14 +554,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
     );
   }
 
-  // Lookup støtter både nye "postnr. + sted"-labels og gamle enkle navn
-  // så eksisterende Supabase-rader ikke plutselig faller tilbake til default.
   double _latForLocation(String locationName) {
     final key = locationName.trim().toLowerCase();
     if (key.contains('skien')) return 59.2096;
     if (key.contains('porsgrunn')) return 59.1419;
-    if (key.contains('stathelle')) return 59.0456;
+    if (key.contains('siljan')) return 59.3024;
     if (key.contains('langesund')) return 59.0000;
+    if (key.contains('stathelle')) return 59.0456;
     if (key.contains('bamble')) return 59.0197;
     return 59.14;
   }
@@ -418,8 +569,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final key = locationName.trim().toLowerCase();
     if (key.contains('skien')) return 9.6089;
     if (key.contains('porsgrunn')) return 9.6561;
-    if (key.contains('stathelle')) return 9.6910;
+    if (key.contains('siljan')) return 9.7181;
     if (key.contains('langesund')) return 9.7500;
+    if (key.contains('stathelle')) return 9.6910;
     if (key.contains('bamble')) return 9.5600;
     return 9.65;
   }

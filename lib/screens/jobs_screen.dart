@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
-import '../widgets/reserved_timer.dart';
 import 'job_detail_screen.dart';
+import 'post_job_screen.dart';
 
 enum JobSortOption {
   newest,
@@ -33,6 +33,7 @@ class _JobsScreenState extends State<JobsScreen> {
   JobSortOption _sort = JobSortOption.newest;
   bool _showOnlyOpen = false;
   _JobsTab _activeTab = _JobsTab.all;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -40,6 +41,20 @@ class _JobsScreenState extends State<JobsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AppState>().ensureJobsLoaded();
     });
+  }
+
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    await context.read<AppState>().reloadJobs();
+    if (!mounted) return;
+    setState(() => _isRefreshing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Oppdrag oppdatert'),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 
   @override
@@ -93,11 +108,26 @@ class _JobsScreenState extends State<JobsScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: IconButton(
-              onPressed: () => appState.reloadJobs(),
-              icon: const Icon(Icons.refresh_rounded, color: _primary),
-              tooltip: 'Last inn på nytt',
-            ),
+            child: _isRefreshing
+                ? const SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: _primary,
+                        ),
+                      ),
+                    ),
+                  )
+                : IconButton(
+                    onPressed: _handleRefresh,
+                    icon: const Icon(Icons.refresh_rounded, color: _primary),
+                    tooltip: 'Last inn på nytt',
+                  ),
           ),
         ],
       ),
@@ -113,7 +143,7 @@ class _JobsScreenState extends State<JobsScreen> {
                 const SizedBox(height: 6),
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: appState.reloadJobs,
+                    onRefresh: _handleRefresh,
                     color: _primary,
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
@@ -165,15 +195,6 @@ class _JobsScreenState extends State<JobsScreen> {
                     ? () => _takeJob(context, job)
                     : null,
               ),
-              if (job.status == JobStatus.reserved &&
-                  job.reservedUntil != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: ReservedTimer(
-                    jobId: job.id,
-                    reservedUntil: job.reservedUntil!,
-                  ),
-                ),
               if (isOwner && _activeTab == _JobsTab.mine) ...[
                 const SizedBox(height: 10),
                 _ownerRowActions(context, job),
@@ -199,7 +220,7 @@ class _JobsScreenState extends State<JobsScreen> {
         Expanded(
           child: OutlinedButton.icon(
             onPressed: job.status == JobStatus.open
-                ? () => _showEditDialog(context, job)
+                ? () => _openEditScreen(context, job)
                 : null,
             icon: const Icon(Icons.edit_outlined, size: 18),
             label: const Text('Rediger'),
@@ -280,7 +301,6 @@ class _JobsScreenState extends State<JobsScreen> {
     }
   }
 
-  // ---------- TAB PILL ROW ----------
   Widget _tabPillRow({
     required int allCount,
     required int mineCount,
@@ -529,6 +549,15 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
+  void _openEditScreen(BuildContext context, Job job) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostJobScreen(existingJob: job),
+      ),
+    );
+  }
+
   Future<void> _confirmDelete(BuildContext context, Job job) async {
     final confirmed = await showDialog<bool>(
           context: context,
@@ -567,117 +596,6 @@ class _JobsScreenState extends State<JobsScreen> {
       SnackBar(
         content: Text(
           ok ? 'Oppdraget ble slettet.' : 'Kunne ikke slette oppdraget.',
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showEditDialog(BuildContext context, Job job) async {
-    final titleCtrl = TextEditingController(text: job.title);
-    final descCtrl = TextEditingController(text: job.description);
-    final priceCtrl = TextEditingController(text: job.price.toString());
-    final categoryCtrl = TextEditingController(text: job.category);
-    final locationCtrl = TextEditingController(text: job.locationName);
-    final formKey = GlobalKey<FormState>();
-
-    double lat = job.lat;
-    double lng = job.lng;
-
-    final saved = await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text('Rediger oppdrag'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: titleCtrl,
-                      decoration: const InputDecoration(labelText: 'Tittel'),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Skriv tittel' : null,
-                    ),
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Beskrivelse'),
-                      maxLines: 3,
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Skriv beskrivelse'
-                          : null,
-                    ),
-                    TextFormField(
-                      controller: priceCtrl,
-                      decoration: const InputDecoration(labelText: 'Pris'),
-                      keyboardType: TextInputType.number,
-                      validator: (v) {
-                        final parsed = int.tryParse((v ?? '').trim());
-                        if (parsed == null || parsed <= 0) {
-                          return 'Ugyldig pris';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: categoryCtrl,
-                      decoration: const InputDecoration(labelText: 'Kategori'),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Skriv kategori'
-                          : null,
-                    ),
-                    TextFormField(
-                      controller: locationCtrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Sted (postnr. + sted)'),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Skriv sted' : null,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Avbryt'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _primary),
-                onPressed: () {
-                  if (formKey.currentState?.validate() != true) return;
-                  Navigator.pop(context, true);
-                },
-                child: const Text('Lagre'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (!saved || !context.mounted) return;
-
-    final ok = await context.read<AppState>().updateOwnJob(
-          jobId: job.id,
-          title: titleCtrl.text.trim(),
-          description: descCtrl.text.trim(),
-          price: int.parse(priceCtrl.text.trim()),
-          category: categoryCtrl.text.trim(),
-          locationName: locationCtrl.text.trim(),
-          lat: lat,
-          lng: lng,
-        );
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok ? 'Oppdraget ble oppdatert.' : 'Kunne ikke oppdatere oppdraget.',
         ),
       ),
     );

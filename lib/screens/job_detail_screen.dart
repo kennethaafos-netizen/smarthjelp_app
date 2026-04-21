@@ -4,9 +4,9 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
-import '../widgets/reserved_timer.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
+import 'post_job_screen.dart';
 
 const Color _primary = Color(0xFF2356E8);
 const Color _accent = Color(0xFF18B7A6);
@@ -87,14 +87,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 const SizedBox(height: 16),
                 _titleCard(job),
                 const SizedBox(height: 14),
-                if (job.status == JobStatus.reserved &&
-                    job.reservedUntil != null) ...[
-                  ReservedTimer(
-                    jobId: job.id,
-                    reservedUntil: job.reservedUntil!,
-                  ),
-                  const SizedBox(height: 14),
-                ],
                 _descriptionCard(job),
                 const SizedBox(height: 14),
                 _paymentCard(job, isOwner, isWorker),
@@ -302,9 +294,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  // =====================================================================
-  // BETALING — rollebasert tekst. Bruker "oppdragsgiver" / "oppdragstaker".
-  // =====================================================================
   Widget _paymentCard(Job job, bool isOwner, bool isWorker) {
     if (isOwner) return _paymentCardOwner(job);
     if (isWorker) return _paymentCardWorker(job);
@@ -410,7 +399,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   }
 
   Widget _paymentCardPublic(Job job) {
-    // Tredjepart/offentlig visning: vis kun prisen, ingen avgiftsbrøk.
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,6 +579,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     if (!_isLoading && isOwner && job.status == JobStatus.open) {
+      children.add(_outlinedButton(
+        'Rediger oppdrag',
+        Icons.edit_outlined,
+        () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PostJobScreen(existingJob: job),
+            ),
+          );
+        },
+      ));
       children.add(_outlinedButton(
         'Slett oppdrag',
         Icons.delete_outline_rounded,
@@ -848,10 +848,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
   }
 }
-
-// ============================================================
-// CANCEL BANNER
-// ============================================================
 
 class _CancelBanner extends StatelessWidget {
   final Job job;

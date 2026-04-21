@@ -9,11 +9,12 @@ const List<String> kCategories = [
   "Annet",
 ];
 
-// MVP: postnummer + sted for å matche hvordan brukerne tenker på adresse.
-// job.locationName lagres og vises som hele strengen, f.eks. "3916 Porsgrunn".
+// MVP: dekningsområde er fire kommuner i Grenland.
+// Onboardingen viser kun kommunenavn. Når bruker legger ut et oppdrag
+// skriver hen inn postnummeret sitt, og appen deriverer kommunen automatisk.
 const List<String> kLocations = [
-  "3717 Skien",
-  "3916 Porsgrunn",
-  "3960 Stathelle",
-  "3970 Langesund",
+  "Skien",
+  "Porsgrunn",
+  "Siljan",
+  "Bamble",
 ];

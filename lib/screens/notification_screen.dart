@@ -252,7 +252,7 @@ class NotificationScreen extends StatelessWidget {
   Future<void> _confirmClear(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
@@ -260,12 +260,12 @@ class NotificationScreen extends StatelessWidget {
         content: const Text('Vil du fjerne alle varsler?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('Avbryt'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: _primary),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Tøm'),
           ),
         ],
