@@ -122,6 +122,7 @@ class AppState extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final Map<String, List<String>> _jobImages = {};
 
+  // Notifikasjoner er per mottaker (userId). Filtreres til currentUser i getters.
   final List<AppNotification> _notifications = [];
 
   bool _isLoadingJobs = false;
@@ -131,6 +132,7 @@ class AppState extends ChangeNotifier {
   bool _isAuthenticated = false;
   bool _isAuthLoading = true;
 
+  // V2 FOUNDATION (distance + deterministic offset + preferences)
   static const double _markerSpread = 0.006;
   double _userLat = 59.14;
   double _userLng = 9.65;
@@ -147,7 +149,7 @@ class AppState extends ChangeNotifier {
 
   SupabaseClient get _client => Supabase.instance.client;
 
-  // ---- NOTIFICATIONS ----
+  // ---- NOTIFICATIONS (per current user) ----
 
   List<AppNotification> get notifications {
     final mine = _notifications
@@ -190,6 +192,7 @@ class AppState extends ChangeNotifier {
     if (_notifications.length != before) notifyListeners();
   }
 
+  // Alias for clearNotifications — brukes av eldre kall i UI.
   void clearAllNotifications() => clearNotifications();
 
   void _pushNotification({
@@ -537,6 +540,11 @@ class AppState extends ChangeNotifier {
   double get moneySpent =>
       completedPostedJobs.fold(0.0, (sum, j) => sum + j.totalPrice);
 
+  // TRANSACTIONS (light version) — semantiske aliaser + netto.
+  double get totalIncome => moneyEarned;
+  double get totalExpenses => moneySpent;
+  double get netBalance => totalIncome - totalExpenses;
+
   List<int> get availableTaxReportYears {
     final years = <int>{
       DateTime.now().year,
@@ -610,6 +618,8 @@ class AppState extends ChangeNotifier {
     String? imageUrl,
     List<String>? imageUrls,
   }) async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
+
     final job = Job(
       id: _uuid.v4(),
       title: title,
@@ -730,17 +740,22 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> reserveJob(String id) async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
+
     final job = getJobById(id);
     if (job == null) return false;
     if (job.status != JobStatus.open) return false;
     if (job.createdByUserId == _currentUser.id) return false;
 
+    final now = DateTime.now();
     final updated = job.copyWith(
       status: JobStatus.reserved,
       acceptedByUserId: _currentUser.id,
-      reservedAt: DateTime.now(),
+      reservedAt: now,
       cancelRequestedByUserId: null,
       isPaymentReserved: true,
+      paymentReservedAt: now,
+      isPaidOut: false,
       isCompletedByWorker: false,
       isApprovedByOwner: false,
     );
@@ -835,6 +850,7 @@ class AppState extends ChangeNotifier {
     final updated = job.copyWith(
       status: JobStatus.completed,
       isApprovedByOwner: true,
+      isPaidOut: true,
       cancelRequestedByUserId: null,
     );
 
@@ -867,6 +883,8 @@ class AppState extends ChangeNotifier {
       acceptedByUserId: null,
       reservedAt: null,
       isPaymentReserved: false,
+      paymentReservedAt: null,
+      isPaidOut: false,
       isCompletedByWorker: false,
       isApprovedByOwner: false,
       cancelRequestedByUserId: null,
@@ -899,6 +917,8 @@ class AppState extends ChangeNotifier {
       reservedAt: null,
       cancelRequestedByUserId: null,
       isPaymentReserved: false,
+      paymentReservedAt: null,
+      isPaidOut: false,
       isCompletedByWorker: false,
       isApprovedByOwner: false,
     );
@@ -908,6 +928,7 @@ class AppState extends ChangeNotifier {
       systemMessage: 'Reservasjonen utløp automatisk.',
     );
 
+    // Varsle begge parter separat for utløp.
     if (previousWorker != null) {
       _pushNotification(
         recipientUserId: previousWorker,
@@ -935,6 +956,7 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
+    // OPEN: ingen motpart ennå. Eier sletter bare oppdraget direkte.
     if (job.status == JobStatus.open) {
       if (isOwner) {
         await deleteOwnJob(id);
@@ -990,6 +1012,8 @@ class AppState extends ChangeNotifier {
       acceptedByUserId: null,
       reservedAt: null,
       isPaymentReserved: false,
+      paymentReservedAt: null,
+      isPaidOut: false,
       isCompletedByWorker: false,
       isApprovedByOwner: false,
       cancelRequestedByUserId: null,
@@ -1109,6 +1133,7 @@ class AppState extends ChangeNotifier {
       ),
     );
 
+    // Varsle motparten på jobben, ikke deg selv.
     final job = getJobById(jobId);
     if (job != null) {
       final otherParty = job.createdByUserId == _currentUser.id
@@ -1182,6 +1207,8 @@ class AppState extends ChangeNotifier {
     _syncProfileToSupabase();
   }
 
+  // Persisterer valgene fra onboardingen tilbake til AppState.
+  // Kalles fra OnboardingScreen før navigasjon til /home.
   void applyOnboarding({
     required bool wantsToWork,
     required String preferredArea,
@@ -1195,9 +1222,8 @@ class AppState extends ChangeNotifier {
     _syncProfileToSupabase();
   }
 
-  void switchUser() {
-    // No-op: Ekte auth er aktivert. Bytte bruker gjøres via logg ut + logg inn.
-  }
+  // No-op: ekte auth er aktivert. Bytte bruker gjøres via logg ut + logg inn.
+  void switchUser() {}
 
   void rateUser({required String userId, required double newRating}) {
     final user = _users[userId];

@@ -13,6 +13,8 @@ class Job {
   final String locationName;
   final double lat;
   final double lng;
+  final double? exactLat;
+  final double? exactLng;
   final String category;
   final String? imageUrl;
   final String createdByUserId;
@@ -22,6 +24,8 @@ class Job {
   final int viewCount;
   final DateTime? reservedAt;
   final bool isPaymentReserved;
+  final DateTime? paymentReservedAt;
+  final bool isPaidOut;
   final bool isCompletedByWorker;
   final bool isApprovedByOwner;
   final String? cancelRequestedByUserId;
@@ -38,11 +42,15 @@ class Job {
     required this.createdByUserId,
     required this.status,
     required this.createdAt,
+    this.exactLat,
+    this.exactLng,
     this.imageUrl,
     this.acceptedByUserId,
     this.viewCount = 0,
     this.reservedAt,
     this.isPaymentReserved = false,
+    this.paymentReservedAt,
+    this.isPaidOut = false,
     this.isCompletedByWorker = false,
     this.isApprovedByOwner = false,
     this.cancelRequestedByUserId,
@@ -65,7 +73,16 @@ class Job {
   bool get isInProgress => status == JobStatus.inProgress;
   bool get isCompleted => status == JobStatus.completed;
   bool get isActive => isReserved || isInProgress;
-  bool get isFullyCompleted => status == JobStatus.completed && isApprovedByOwner;
+  bool get isFullyCompleted =>
+      status == JobStatus.completed && isApprovedByOwner;
+
+  bool get hasPendingCancelRequest => cancelRequestedByUserId != null;
+
+  // PRIVACY LOCATION — eksakt posisjon vises kun til reservert worker.
+  bool get hasExactLocation => exactLat != null && exactLng != null;
+
+  double get visibleLatForReservedWorker => exactLat ?? lat;
+  double get visibleLngForReservedWorker => exactLng ?? lng;
 
   Job copyWith({
     String? id,
@@ -75,6 +92,8 @@ class Job {
     String? locationName,
     double? lat,
     double? lng,
+    Object? exactLat = _sentinel,
+    Object? exactLng = _sentinel,
     String? category,
     Object? imageUrl = _sentinel,
     String? createdByUserId,
@@ -84,6 +103,8 @@ class Job {
     int? viewCount,
     Object? reservedAt = _sentinel,
     bool? isPaymentReserved,
+    Object? paymentReservedAt = _sentinel,
+    bool? isPaidOut,
     bool? isCompletedByWorker,
     bool? isApprovedByOwner,
     Object? cancelRequestedByUserId = _sentinel,
@@ -96,6 +117,10 @@ class Job {
       locationName: locationName ?? this.locationName,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
+      exactLat:
+          exactLat == _sentinel ? this.exactLat : exactLat as double?,
+      exactLng:
+          exactLng == _sentinel ? this.exactLng : exactLng as double?,
       category: category ?? this.category,
       imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
       createdByUserId: createdByUserId ?? this.createdByUserId,
@@ -108,6 +133,10 @@ class Job {
       reservedAt:
           reservedAt == _sentinel ? this.reservedAt : reservedAt as DateTime?,
       isPaymentReserved: isPaymentReserved ?? this.isPaymentReserved,
+      paymentReservedAt: paymentReservedAt == _sentinel
+          ? this.paymentReservedAt
+          : paymentReservedAt as DateTime?,
+      isPaidOut: isPaidOut ?? this.isPaidOut,
       isCompletedByWorker:
           isCompletedByWorker ?? this.isCompletedByWorker,
       isApprovedByOwner: isApprovedByOwner ?? this.isApprovedByOwner,
@@ -126,6 +155,8 @@ class Job {
       locationName: _toStringValue(map['location_name']),
       lat: _toDouble(map['lat']),
       lng: _toDouble(map['lng']),
+      exactLat: _toNullableDouble(map['exact_lat']),
+      exactLng: _toNullableDouble(map['exact_lng']),
       category: _toStringValue(map['category'], fallback: 'Annet'),
       imageUrl: _toNullableString(map['image_url']),
       createdByUserId: _toStringValue(map['created_by_user_id']),
@@ -135,6 +166,8 @@ class Job {
       viewCount: _toInt(map['view_count']),
       reservedAt: _toDateTime(map['reserved_at']),
       isPaymentReserved: _toBool(map['is_payment_reserved']),
+      paymentReservedAt: _toDateTime(map['payment_reserved_at']),
+      isPaidOut: _toBool(map['is_paid_out']),
       isCompletedByWorker: _toBool(map['is_completed_by_worker']),
       isApprovedByOwner: _toBool(map['is_approved_by_owner']),
       cancelRequestedByUserId:
@@ -155,6 +188,8 @@ class Job {
       'location_name': locationName,
       'lat': lat,
       'lng': lng,
+      'exact_lat': exactLat,
+      'exact_lng': exactLng,
       'category': category,
       'image_url': imageUrl,
       'created_by_user_id': createdByUserId,
@@ -164,6 +199,8 @@ class Job {
       'view_count': viewCount,
       'reserved_at': reservedAt?.toIso8601String(),
       'is_payment_reserved': isPaymentReserved,
+      'payment_reserved_at': paymentReservedAt?.toIso8601String(),
+      'is_paid_out': isPaidOut,
       'is_completed_by_worker': isCompletedByWorker,
       'is_approved_by_owner': isApprovedByOwner,
       'cancel_requested_by_user_id': cancelRequestedByUserId,
@@ -178,6 +215,8 @@ class Job {
       'location_name': locationName,
       'lat': lat,
       'lng': lng,
+      'exact_lat': exactLat,
+      'exact_lng': exactLng,
       'category': category,
       'image_url': imageUrl,
       'created_by_user_id': createdByUserId,
@@ -187,6 +226,8 @@ class Job {
       'view_count': viewCount,
       'reserved_at': reservedAt?.toIso8601String(),
       'is_payment_reserved': isPaymentReserved,
+      'payment_reserved_at': paymentReservedAt?.toIso8601String(),
+      'is_paid_out': isPaidOut,
       'is_completed_by_worker': isCompletedByWorker,
       'is_approved_by_owner': isApprovedByOwner,
       'cancel_requested_by_user_id': cancelRequestedByUserId,
@@ -233,6 +274,14 @@ class Job {
     if (value is int) return value.toDouble();
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static double? _toNullableDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   static bool _toBool(dynamic value) {
