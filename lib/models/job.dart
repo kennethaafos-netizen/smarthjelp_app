@@ -1,8 +1,3 @@
-// FIX: Added optional exactLat/exactLng fields so a job can carry a precise
-// coordinate that is only revealed to the reserved worker (privacy-first
-// location strategy). Existing fields, API, parsing, and UI are preserved.
-// `lat` / `lng` remain the approximate (publicly shown) coordinate.
-
 enum JobStatus {
   open,
   reserved,
@@ -10,8 +5,6 @@ enum JobStatus {
   completed,
 }
 
-/// Immutabel jobb-modell. Bruk [copyWith] for endringer – aldri direkte
-/// mutasjon. Understøtter både Supabase (snake_case) og intern JSON.
 class Job {
   final String id;
   final String title;
@@ -20,8 +13,6 @@ class Job {
   final String locationName;
   final double lat;
   final double lng;
-  final double? exactLat;
-  final double? exactLng;
   final String category;
   final String? imageUrl;
   final String createdByUserId;
@@ -47,8 +38,6 @@ class Job {
     required this.createdByUserId,
     required this.status,
     required this.createdAt,
-    this.exactLat,
-    this.exactLng,
     this.imageUrl,
     this.acceptedByUserId,
     this.viewCount = 0,
@@ -60,8 +49,6 @@ class Job {
   });
 
   static const _sentinel = Object();
-
-  // ---------------- COMPUTED ----------------
 
   DateTime? get reservedUntil {
     if (reservedAt == null) return null;
@@ -76,23 +63,9 @@ class Job {
   bool get isOpen => status == JobStatus.open;
   bool get isReserved => status == JobStatus.reserved;
   bool get isInProgress => status == JobStatus.inProgress;
-  bool get isFullyCompleted =>
-      status == JobStatus.completed && isApprovedByOwner;
-
-  bool get hasPendingCancelRequest => cancelRequestedByUserId != null;
-
-  /// Om jobben har en eksakt posisjon som er forskjellig fra den
-  /// omtrentlige. Brukes i fremtiden for å bytte mellom "bydel" og
-  /// "nøyaktig adresse".
-  bool get hasExactLocation => exactLat != null && exactLng != null;
-
-  /// Beste kjente lat for reservert utfører. Faller tilbake til approx.
-  double get visibleLatForReservedWorker => exactLat ?? lat;
-
-  /// Beste kjente lng for reservert utfører. Faller tilbake til approx.
-  double get visibleLngForReservedWorker => exactLng ?? lng;
-
-  // ---------------- COPY ----------------
+  bool get isCompleted => status == JobStatus.completed;
+  bool get isActive => isReserved || isInProgress;
+  bool get isFullyCompleted => status == JobStatus.completed && isApprovedByOwner;
 
   Job copyWith({
     String? id,
@@ -102,8 +75,6 @@ class Job {
     String? locationName,
     double? lat,
     double? lng,
-    Object? exactLat = _sentinel,
-    Object? exactLng = _sentinel,
     String? category,
     Object? imageUrl = _sentinel,
     String? createdByUserId,
@@ -125,10 +96,6 @@ class Job {
       locationName: locationName ?? this.locationName,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
-      exactLat:
-          exactLat == _sentinel ? this.exactLat : exactLat as double?,
-      exactLng:
-          exactLng == _sentinel ? this.exactLng : exactLng as double?,
       category: category ?? this.category,
       imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
       createdByUserId: createdByUserId ?? this.createdByUserId,
@@ -141,15 +108,14 @@ class Job {
       reservedAt:
           reservedAt == _sentinel ? this.reservedAt : reservedAt as DateTime?,
       isPaymentReserved: isPaymentReserved ?? this.isPaymentReserved,
-      isCompletedByWorker: isCompletedByWorker ?? this.isCompletedByWorker,
+      isCompletedByWorker:
+          isCompletedByWorker ?? this.isCompletedByWorker,
       isApprovedByOwner: isApprovedByOwner ?? this.isApprovedByOwner,
       cancelRequestedByUserId: cancelRequestedByUserId == _sentinel
           ? this.cancelRequestedByUserId
           : cancelRequestedByUserId as String?,
     );
   }
-
-  // ---------------- SUPABASE / JSON ----------------
 
   factory Job.fromSupabase(Map<String, dynamic> map) {
     return Job(
@@ -160,8 +126,6 @@ class Job {
       locationName: _toStringValue(map['location_name']),
       lat: _toDouble(map['lat']),
       lng: _toDouble(map['lng']),
-      exactLat: _toNullableDouble(map['exact_lat']),
-      exactLng: _toNullableDouble(map['exact_lng']),
       category: _toStringValue(map['category'], fallback: 'Annet'),
       imageUrl: _toNullableString(map['image_url']),
       createdByUserId: _toStringValue(map['created_by_user_id']),
@@ -191,8 +155,6 @@ class Job {
       'location_name': locationName,
       'lat': lat,
       'lng': lng,
-      'exact_lat': exactLat,
-      'exact_lng': exactLng,
       'category': category,
       'image_url': imageUrl,
       'created_by_user_id': createdByUserId,
@@ -216,8 +178,6 @@ class Job {
       'location_name': locationName,
       'lat': lat,
       'lng': lng,
-      'exact_lat': exactLat,
-      'exact_lng': exactLng,
       'category': category,
       'image_url': imageUrl,
       'created_by_user_id': createdByUserId,
@@ -232,19 +192,6 @@ class Job {
       'cancel_requested_by_user_id': cancelRequestedByUserId,
     };
   }
-
-  // ---------------- EQUALITY ----------------
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is Job && other.id == id;
-  }
-
-  @override
-  int get hashCode => id.hashCode;
-
-  // ---------------- STATUS HELPERS ----------------
 
   static JobStatus _statusFromString(String? value) {
     switch (value) {
@@ -274,8 +221,6 @@ class Job {
     }
   }
 
-  // ---------------- PARSING HELPERS ----------------
-
   static int _toInt(dynamic value) {
     if (value is int) return value;
     if (value is double) return value.round();
@@ -288,14 +233,6 @@ class Job {
     if (value is int) return value.toDouble();
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  static double? _toNullableDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is num) return value.toDouble();
-    return double.tryParse(value.toString());
   }
 
   static bool _toBool(dynamic value) {
@@ -325,10 +262,6 @@ class Job {
 
   @override
   String toString() {
-    return 'Job(id: $id, title: $title, status: $status, '
-        'createdByUserId: $createdByUserId, '
-        'acceptedByUserId: $acceptedByUserId, '
-        'cancelRequestedByUserId: $cancelRequestedByUserId, '
-        'hasExactLocation: $hasExactLocation)';
+    return 'Job(id: $id, title: $title, status: $status, createdByUserId: $createdByUserId, acceptedByUserId: $acceptedByUserId)';
   }
 }

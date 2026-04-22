@@ -440,9 +440,7 @@ class _JobsScreenState extends State<JobsScreen> {
                 const SizedBox(height: 10),
                 _ownerRowActions(context, job),
               ],
-              if (isTaker &&
-                  showTakerActions &&
-                  job.status == JobStatus.reserved) ...[
+              if (isTaker && showTakerActions && job.isActive) ...[
                 const SizedBox(height: 10),
                 _takerRowActions(context, job),
               ],
@@ -500,25 +498,103 @@ class _JobsScreenState extends State<JobsScreen> {
   }
 
   Widget _takerRowActions(BuildContext context, Job job) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () async {
-          await context.read<AppState>().releaseJob(job.id);
-        },
-        icon: const Icon(Icons.close_rounded, size: 18),
-        label: const Text('Slipp reservasjon'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFFDC2626),
-          side: const BorderSide(color: Color(0x55DC2626)),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+    if (job.isReserved) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () async {
+                await context.read<AppState>().startJob(job.id);
+              },
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('Start jobb'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await context.read<AppState>().releaseJob(job.id);
+              },
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Slipp'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFDC2626),
+                side: const BorderSide(color: Color(0x55DC2626)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (job.isInProgress) {
+      final alreadyMarkedDone = job.isCompletedByWorker;
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: alreadyMarkedDone
+                  ? null
+                  : () async {
+                      await context.read<AppState>().completeJob(job.id);
+                    },
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: Text(
+                alreadyMarkedDone ? 'Venter på godkjenning' : 'Fullfør jobb',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0EA877),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    const Color(0xFF0EA877).withOpacity(0.35),
+                disabledForegroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await context.read<AppState>().cancelJob(job.id);
+              },
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Avbryt'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFDC2626),
+                side: const BorderSide(color: Color(0x55DC2626)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Future<void> _takeJob(BuildContext context, Job job) async {
