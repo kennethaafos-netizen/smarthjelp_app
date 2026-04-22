@@ -24,6 +24,37 @@ enum AppNotificationType {
   reservationReleased,
 }
 
+String _notificationTypeToWire(AppNotificationType t) {
+  switch (t) {
+    case AppNotificationType.message: return 'message';
+    case AppNotificationType.reserved: return 'reserved';
+    case AppNotificationType.started: return 'started';
+    case AppNotificationType.completed: return 'completed';
+    case AppNotificationType.approved: return 'approved';
+    case AppNotificationType.cancelRequested: return 'cancel_requested';
+    case AppNotificationType.cancelApproved: return 'cancel_approved';
+    case AppNotificationType.cancelRejected: return 'cancel_rejected';
+    case AppNotificationType.reservationExpired: return 'reservation_expired';
+    case AppNotificationType.reservationReleased: return 'reservation_released';
+  }
+}
+
+AppNotificationType _notificationTypeFromWire(String? s) {
+  switch (s) {
+    case 'message': return AppNotificationType.message;
+    case 'reserved': return AppNotificationType.reserved;
+    case 'started': return AppNotificationType.started;
+    case 'completed': return AppNotificationType.completed;
+    case 'approved': return AppNotificationType.approved;
+    case 'cancel_requested': return AppNotificationType.cancelRequested;
+    case 'cancel_approved': return AppNotificationType.cancelApproved;
+    case 'cancel_rejected': return AppNotificationType.cancelRejected;
+    case 'reservation_expired': return AppNotificationType.reservationExpired;
+    case 'reservation_released': return AppNotificationType.reservationReleased;
+    default: return AppNotificationType.message;
+  }
+}
+
 class AppNotification {
   final String id;
   final String recipientUserId;
@@ -58,6 +89,25 @@ class AppNotification {
   }
 
   bool get isMessage => type == AppNotificationType.message;
+
+  factory AppNotification.fromSupabase(Map<String, dynamic> map) {
+    final dt = map['created_at'];
+    DateTime created = DateTime.now();
+    if (dt is DateTime) {
+      created = dt.toLocal();
+    } else if (dt != null) {
+      created = DateTime.tryParse(dt.toString())?.toLocal() ?? DateTime.now();
+    }
+    return AppNotification(
+      id: (map['id'] ?? '').toString(),
+      recipientUserId: (map['recipient_user_id'] ?? '').toString(),
+      type: _notificationTypeFromWire(map['type']?.toString()),
+      text: (map['text'] ?? '').toString(),
+      createdAt: created,
+      jobId: map['job_id'] == null ? null : map['job_id'].toString(),
+      isRead: map['is_read'] == true,
+    );
+  }
 }
 
 class TaxReportEntry {
@@ -118,11 +168,12 @@ class AppState extends ChangeNotifier {
   late UserProfile _currentUser;
 
   final Map<String, UserProfile> _users = {};
+  final Set<String> _profilesRequested = <String>{};
   List<Job> _jobs = [];
   final List<ChatMessage> _messages = [];
+  final Set<String> _loadedMessageJobIds = <String>{};
   final Map<String, List<String>> _jobImages = {};
 
-  // Notifikasjoner er per mottaker (userId). Filtreres til currentUser i getters.
   final List<AppNotification> _notifications = [];
 
   bool _isLoadingJobs = false;
@@ -131,6 +182,11 @@ class AppState extends ChangeNotifier {
 
   bool _isAuthenticated = false;
   bool _isAuthLoading = true;
+
+  RealtimeChannel? _jobsChannel;
+  RealtimeChannel? _chatChannel;
+  RealtimeChannel? _notificationsChannel;
+  RealtimeChannel? _profilesChannel;
 
   // V2 FOUNDATION (distance + deterministic offset + preferences)
   static const double _markerSpread = 0.006;
@@ -149,7 +205,7 @@ class AppState extends ChangeNotifier {
 
   SupabaseClient get _client => Supabase.instance.client;
 
-  // ---- NOTIFICATIONS (per current user) ----
+  // ---- NOTIFICATIONS ----
 
   List<AppNotification> get notifications {
     final mine = _notifications
@@ -159,9 +215,9 @@ class AppState extends ChangeNotifier {
     return List.unmodifiable(mine);
   }
 
-  int get unreadNotificationCount =>
-      _notifications.where((n) =>
-          n.recipientUserId == _currentUser.id && !n.isRead).length;
+  int get unreadNotificationCount => _notifications
+      .where((n) => n.recipientUserId == _currentUser.id && !n.isRead)
+      .length;
 
   bool get hasUnreadNotifications => unreadNotificationCount > 0;
 
@@ -171,6 +227,7 @@ class AppState extends ChangeNotifier {
     if (_notifications[index].isRead) return;
     _notifications[index] = _notifications[index].copyWith(isRead: true);
     notifyListeners();
+    _supabaseService.markNotificationReadRemote(id);
   }
 
   void markAllNotificationsRead() {
@@ -183,18 +240,25 @@ class AppState extends ChangeNotifier {
       }
     }
     if (changed) notifyListeners();
+    if (_currentUser.id.isNotEmpty) {
+      _supabaseService.markAllNotificationsReadRemote(_currentUser.id);
+    }
   }
 
   void clearNotifications() {
     final before = _notifications.length;
-    _notifications
-        .removeWhere((n) => n.recipientUserId == _currentUser.id);
+    _notifications.removeWhere((n) => n.recipientUserId == _currentUser.id);
     if (_notifications.length != before) notifyListeners();
+    if (_currentUser.id.isNotEmpty) {
+      _supabaseService.deleteNotificationsForUser(_currentUser.id);
+    }
   }
 
-  // Alias for clearNotifications — brukes av eldre kall i UI.
   void clearAllNotifications() => clearNotifications();
 
+  /// Fire-and-forget insert av notifikasjon. Lokale kopier legges
+  /// også inn (for actor), men filtreres ut av `notifications`-
+  /// getteren siden den bare viser `recipientUserId == currentUser.id`.
   void _pushNotification({
     required String recipientUserId,
     required AppNotificationType type,
@@ -202,17 +266,19 @@ class AppState extends ChangeNotifier {
     String? jobId,
   }) {
     if (recipientUserId.isEmpty) return;
-    _notifications.add(
-      AppNotification(
-        id: _uuid.v4(),
-        recipientUserId: recipientUserId,
-        type: type,
-        text: text,
-        createdAt: DateTime.now(),
-        jobId: jobId,
-        isRead: false,
-      ),
+    final id = _uuid.v4();
+    final createdAt = DateTime.now();
+
+    _supabaseService.insertNotification(
+      id: id,
+      recipientUserId: recipientUserId,
+      type: _notificationTypeToWire(type),
+      text: text,
+      jobId: jobId,
+      createdAt: createdAt,
     );
+    // Mottakerens klient får raden via realtime. Vi legger den ikke
+    // inn lokalt her, siden avsender likevel ikke skal se varselet.
   }
 
   // ---- JOB LISTS ----
@@ -237,6 +303,8 @@ class AppState extends ChangeNotifier {
     await loadCurrentUser();
     if (_isAuthenticated) {
       await ensureJobsLoaded();
+      await _hydrateOwnProfile();
+      await _loadNotifications();
     }
   }
 
@@ -269,17 +337,16 @@ class AppState extends ChangeNotifier {
     if (trimmedEmail.isEmpty || password.isEmpty) {
       return 'Fyll inn e-post og passord.';
     }
-
     try {
       final res = await _client.auth.signInWithPassword(
         email: trimmedEmail,
         password: password,
       );
-      if (res.user == null) {
-        return 'Feil e-post eller passord.';
-      }
+      if (res.user == null) return 'Feil e-post eller passord.';
       await loadCurrentUser();
       await ensureJobsLoaded();
+      await _hydrateOwnProfile();
+      await _loadNotifications();
       return null;
     } on AuthException catch (e) {
       return e.message;
@@ -301,10 +368,7 @@ class AppState extends ChangeNotifier {
     if (trimmedEmail.isEmpty || password.isEmpty || trimmedName.isEmpty) {
       return 'Fyll inn navn, e-post og passord.';
     }
-    if (password.length < 6) {
-      return 'Passordet må være minst 6 tegn.';
-    }
-
+    if (password.length < 6) return 'Passordet må være minst 6 tegn.';
     try {
       final res = await _client.auth.signUp(
         email: trimmedEmail,
@@ -315,17 +379,14 @@ class AppState extends ChangeNotifier {
           'preferred_area': preferredArea,
         },
       );
-
-      if (res.user == null) {
-        return 'Kunne ikke opprette bruker.';
-      }
-
+      if (res.user == null) return 'Kunne ikke opprette bruker.';
       if (res.session == null) {
         return 'Vi har sendt en bekreftelsesepost. Bekreft den og logg inn.';
       }
-
       await loadCurrentUser();
       await ensureJobsLoaded();
+      await _hydrateOwnProfile();
+      await _loadNotifications();
       return null;
     } on AuthException catch (e) {
       return e.message;
@@ -336,6 +397,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await _teardownAllRealtime();
     try {
       await _client.auth.signOut();
     } catch (e) {
@@ -354,7 +416,9 @@ class AppState extends ChangeNotifier {
     _jobsError = null;
     _notifications.clear();
     _messages.clear();
+    _loadedMessageJobIds.clear();
     _jobImages.clear();
+    _profilesRequested.clear();
     _preferredCategories.clear();
   }
 
@@ -406,6 +470,31 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Hent egen profil fra profiles-tabellen. Hvis den ikke finnes ennå,
+  /// upsert fra auth-metadata.
+  Future<void> _hydrateOwnProfile() async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) return;
+    final existing = await _supabaseService.fetchProfile(_currentUser.id);
+    if (existing != null) {
+      _currentUser = _currentUser.copyWith(
+        firstName: existing.firstName.isEmpty
+            ? _currentUser.firstName
+            : existing.firstName,
+        phone: existing.phone,
+        wantsToWork: existing.wantsToWork,
+        preferredArea: existing.preferredArea,
+        rating: existing.rating,
+        ratingCount: existing.ratingCount,
+        isVerified: existing.isVerified,
+      );
+      _users[_currentUser.id] = _currentUser;
+      notifyListeners();
+    } else {
+      await _supabaseService.upsertProfile(_currentUser);
+    }
+    _setupProfilesSubscription();
+  }
+
   Future<void> _syncProfileToSupabase() async {
     if (!_isAuthenticated) return;
     try {
@@ -420,15 +509,15 @@ class AppState extends ChangeNotifier {
         ),
       );
     } catch (e) {
-      debugPrint('profile sync error: $e');
+      debugPrint('profile auth sync error: $e');
     }
+    await _supabaseService.upsertProfile(_currentUser);
   }
 
   // ---- JOBS ----
 
   Future<void> ensureJobsLoaded() async {
     if (_isLoadingJobs) return;
-
     _isLoadingJobs = true;
     _jobsError = null;
     notifyListeners();
@@ -438,14 +527,22 @@ class AppState extends ChangeNotifier {
       _jobs = remoteJobs;
       _hasLoadedJobs = true;
     } catch (e) {
-      debugPrint('Fallback til local jobs: $e');
-      _jobs = _buildSeedJobs();
+      debugPrint('ensureJobsLoaded error: $e');
+      _jobs = [];
       _hasLoadedJobs = true;
-      _jobsError = 'Viser lokale testdata fordi Supabase ikke svarte.';
+      _jobsError = 'Kunne ikke laste oppdrag. Sjekk nettverk og prøv igjen.';
     }
 
     _isLoadingJobs = false;
     notifyListeners();
+
+    if (_isAuthenticated) {
+      _setupJobsSubscription();
+      _setupChatSubscription();
+      _setupNotificationsSubscription();
+      _setupProfilesSubscription();
+      _hydrateProfilesForLoadedJobs();
+    }
   }
 
   Future<void> reloadJobs() async {
@@ -464,6 +561,14 @@ class AppState extends ChangeNotifier {
 
     _isLoadingJobs = false;
     notifyListeners();
+
+    if (_isAuthenticated) {
+      _setupJobsSubscription();
+      _setupChatSubscription();
+      _setupNotificationsSubscription();
+      _setupProfilesSubscription();
+      _hydrateProfilesForLoadedJobs();
+    }
   }
 
   Job? getJobById(String id) {
@@ -474,7 +579,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  UserProfile? getUserById(String id) => _users[id];
+  UserProfile? getUserById(String id) {
+    if (id.isEmpty) return null;
+    final cached = _users[id];
+    if (cached != null) return cached;
+    _ensureProfileLoaded(id);
+    return null;
+  }
 
   List<String> getImages(String jobId) =>
       List.unmodifiable(_jobImages[jobId] ?? const []);
@@ -540,7 +651,6 @@ class AppState extends ChangeNotifier {
   double get moneySpent =>
       completedPostedJobs.fold(0.0, (sum, j) => sum + j.totalPrice);
 
-  // TRANSACTIONS (light version) — semantiske aliaser + netto.
   double get totalIncome => moneyEarned;
   double get totalExpenses => moneySpent;
   double get netBalance => totalIncome - totalExpenses;
@@ -559,34 +669,30 @@ class AppState extends ChangeNotifier {
 
     for (final job
         in completedTakenJobs.where((j) => j.createdAt.year == year)) {
-      entries.add(
-        TaxReportEntry(
-          id: 'income_${job.id}',
-          type: TaxTransactionType.income,
-          date: job.createdAt,
-          jobTitle: job.title,
-          category: job.category,
-          locationName: job.locationName,
-          amount: job.payout,
-          sourceJobId: job.id,
-        ),
-      );
+      entries.add(TaxReportEntry(
+        id: 'income_${job.id}',
+        type: TaxTransactionType.income,
+        date: job.createdAt,
+        jobTitle: job.title,
+        category: job.category,
+        locationName: job.locationName,
+        amount: job.payout,
+        sourceJobId: job.id,
+      ));
     }
 
     for (final job
         in completedPostedJobs.where((j) => j.createdAt.year == year)) {
-      entries.add(
-        TaxReportEntry(
-          id: 'expense_${job.id}',
-          type: TaxTransactionType.expense,
-          date: job.createdAt,
-          jobTitle: job.title,
-          category: job.category,
-          locationName: job.locationName,
-          amount: job.totalPrice,
-          sourceJobId: job.id,
-        ),
-      );
+      entries.add(TaxReportEntry(
+        id: 'expense_${job.id}',
+        type: TaxTransactionType.expense,
+        date: job.createdAt,
+        jobTitle: job.title,
+        category: job.category,
+        locationName: job.locationName,
+        amount: job.totalPrice,
+        sourceJobId: job.id,
+      ));
     }
 
     entries.sort((a, b) => b.date.compareTo(a.date));
@@ -594,7 +700,6 @@ class AppState extends ChangeNotifier {
     final totalIncome = entries
         .where((e) => e.isIncome)
         .fold<double>(0, (sum, e) => sum + e.amount);
-
     final totalExpenses = entries
         .where((e) => !e.isIncome)
         .fold<double>(0, (sum, e) => sum + e.amount);
@@ -607,6 +712,9 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  // ==================================================================
+  // addJob — SERVER-FIRST
+  // ==================================================================
   Future<bool> addJob({
     required String title,
     required String description,
@@ -620,7 +728,7 @@ class AppState extends ChangeNotifier {
   }) async {
     if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
 
-    final job = Job(
+    final draft = Job(
       id: _uuid.v4(),
       title: title,
       description: description,
@@ -636,38 +744,33 @@ class AppState extends ChangeNotifier {
       viewCount: 0,
     );
 
-    _jobs.insert(0, job);
-
-    if (imageUrls != null && imageUrls.isNotEmpty) {
-      _jobImages[job.id] = List<String>.from(imageUrls);
-    } else if (imageUrl != null && imageUrl.isNotEmpty) {
-      _jobImages[job.id] = [imageUrl];
-    }
-
-    notifyListeners();
-
-    bool savedOk = false;
-
+    Job saved;
     try {
-      final saved = await _supabaseService.createJob(job);
-
-      if (saved != null) {
-        _replaceJobLocally(saved);
-        savedOk = true;
-
-        if (imageUrls != null && imageUrls.isNotEmpty) {
-          await _supabaseService.addJobImages(
-            jobId: saved.id,
-            urls: imageUrls,
-          );
-        }
-      }
+      saved = await _supabaseService.createJob(draft);
     } catch (e) {
       debugPrint('addJob error: $e');
+      return false;
+    }
+
+    _replaceJobLocally(saved);
+
+    final urls = <String>[];
+    if (imageUrls != null && imageUrls.isNotEmpty) {
+      urls.addAll(imageUrls);
+    } else if (imageUrl != null && imageUrl.isNotEmpty) {
+      urls.add(imageUrl);
+    }
+    if (urls.isNotEmpty) {
+      _jobImages[saved.id] = List<String>.from(urls);
+      try {
+        await _supabaseService.addJobImages(jobId: saved.id, urls: urls);
+      } catch (e) {
+        debugPrint('addJob image attach error: $e');
+      }
     }
 
     notifyListeners();
-    return savedOk;
+    return true;
   }
 
   Future<bool> updateOwnJob({
@@ -685,7 +788,6 @@ class AppState extends ChangeNotifier {
     if (job.createdByUserId != _currentUser.id) return false;
     if (job.status != JobStatus.open) return false;
 
-    final original = job;
     final updated = job.copyWith(
       title: title,
       description: description,
@@ -696,23 +798,17 @@ class AppState extends ChangeNotifier {
       lng: lng,
     );
 
-    _replaceJobLocally(updated);
-    notifyListeners();
-
     try {
       final saved = await _supabaseService.updateJob(updated);
-      if (saved != null) {
-        _replaceJobLocally(saved);
-        notifyListeners();
-        return true;
+      if (saved == null) {
+        await reloadJobs();
+        return false;
       }
-      _replaceJobLocally(original);
+      _replaceJobLocally(saved);
       notifyListeners();
-      return false;
+      return true;
     } catch (e) {
       debugPrint('updateOwnJob error: $e');
-      _replaceJobLocally(original);
-      notifyListeners();
       return false;
     }
   }
@@ -723,20 +819,17 @@ class AppState extends ChangeNotifier {
     if (job.createdByUserId != _currentUser.id) return false;
     if (job.status != JobStatus.open) return false;
 
-    final previousJobs = [..._jobs];
+    try {
+      await _supabaseService.deleteJob(jobId);
+    } catch (e) {
+      debugPrint('deleteOwnJob error: $e');
+      return false;
+    }
+
     _jobs.removeWhere((j) => j.id == jobId);
     _jobImages.remove(jobId);
     notifyListeners();
-
-    try {
-      await _supabaseService.deleteJob(jobId);
-      return true;
-    } catch (e) {
-      debugPrint('deleteOwnJob error: $e');
-      _jobs = previousJobs;
-      notifyListeners();
-      return false;
-    }
+    return true;
   }
 
   Future<bool> reserveJob(String id) async {
@@ -748,43 +841,37 @@ class AppState extends ChangeNotifier {
     if (job.createdByUserId == _currentUser.id) return false;
 
     final now = DateTime.now();
-    final updated = job.copyWith(
-      status: JobStatus.reserved,
-      acceptedByUserId: _currentUser.id,
-      reservedAt: now,
-      cancelRequestedByUserId: null,
-      isPaymentReserved: true,
-      paymentReservedAt: now,
-      isPaidOut: false,
-      isCompletedByWorker: false,
-      isApprovedByOwner: false,
-    );
+    Job? saved;
+    try {
+      saved = await _supabaseService.reserveJobAtomic(
+        jobId: id,
+        workerUserId: _currentUser.id,
+        reservedAt: now,
+      );
+    } catch (e) {
+      debugPrint('reserveJob error: $e');
+      return false;
+    }
 
-    _replaceJobLocally(updated);
+    if (saved == null) {
+      await reloadJobs();
+      return false;
+    }
+
+    _replaceJobLocally(saved);
     _addSystemMessage(
-      jobId: id,
+      jobId: saved.id,
       text: '${_currentUser.firstName} reserverte oppdraget.',
     );
     _pushNotification(
-      recipientUserId: updated.createdByUserId,
+      recipientUserId: saved.createdByUserId,
       type: AppNotificationType.reserved,
       text:
-          '${_currentUser.firstName} reserverte oppdraget «${updated.title}».',
-      jobId: updated.id,
+          '${_currentUser.firstName} reserverte oppdraget «${saved.title}».',
+      jobId: saved.id,
     );
     notifyListeners();
-
-    try {
-      final saved = await _supabaseService.updateJob(updated);
-      if (saved != null) {
-        _replaceJobLocally(saved);
-      }
-      notifyListeners();
-      return true;
-    } catch (e) {
-      debugPrint('Reserve feilet: $e');
-      return false;
-    }
+    return true;
   }
 
   Future<void> cancelReservation(String id) async {
@@ -813,9 +900,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> completeJob(String id) async {
-    await completeJobByWorker(id);
-  }
+  Future<void> completeJob(String id) async => completeJobByWorker(id);
 
   Future<void> completeJobByWorker(String id) async {
     final job = getJobById(id);
@@ -923,12 +1008,12 @@ class AppState extends ChangeNotifier {
       isApprovedByOwner: false,
     );
 
-    await _saveJobUpdate(
+    final ok = await _saveJobUpdate(
       updated,
       systemMessage: 'Reservasjonen utløp automatisk.',
     );
+    if (!ok) return;
 
-    // Varsle begge parter separat for utløp.
     if (previousWorker != null) {
       _pushNotification(
         recipientUserId: previousWorker,
@@ -956,11 +1041,8 @@ class AppState extends ChangeNotifier {
     final isWorker = job.acceptedByUserId == _currentUser.id;
     if (!isOwner && !isWorker) return;
 
-    // OPEN: ingen motpart ennå. Eier sletter bare oppdraget direkte.
     if (job.status == JobStatus.open) {
-      if (isOwner) {
-        await deleteOwnJob(id);
-      }
+      if (isOwner) await deleteOwnJob(id);
       return;
     }
 
@@ -976,12 +1058,8 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final otherParty =
-          isOwner ? job.acceptedByUserId : job.createdByUserId;
-
-      final updated = job.copyWith(
-        cancelRequestedByUserId: _currentUser.id,
-      );
+      final otherParty = isOwner ? job.acceptedByUserId : job.createdByUserId;
+      final updated = job.copyWith(cancelRequestedByUserId: _currentUser.id);
 
       await _saveJobUpdate(
         updated,
@@ -1040,10 +1118,7 @@ class AppState extends ChangeNotifier {
     if (job.cancelRequestedByUserId == _currentUser.id) return;
 
     final requesterId = job.cancelRequestedByUserId!;
-
-    final updated = job.copyWith(
-      cancelRequestedByUserId: null,
-    );
+    final updated = job.copyWith(cancelRequestedByUserId: null);
 
     await _saveJobUpdate(
       updated,
@@ -1062,9 +1137,7 @@ class AppState extends ChangeNotifier {
     if (job.cancelRequestedByUserId == null) return;
     if (job.cancelRequestedByUserId != _currentUser.id) return;
 
-    final updated = job.copyWith(
-      cancelRequestedByUserId: null,
-    );
+    final updated = job.copyWith(cancelRequestedByUserId: null);
 
     await _saveJobUpdate(
       updated,
@@ -1076,11 +1149,9 @@ class AppState extends ChangeNotifier {
   Future<void> incrementView(String id) async {
     final job = getJobById(id);
     if (job == null) return;
-
     final updated = job.copyWith(viewCount: job.viewCount + 1);
     _replaceJobLocally(updated);
     notifyListeners();
-
     try {
       await _supabaseService.updateJob(updated);
     } catch (e) {
@@ -1093,7 +1164,6 @@ class AppState extends ChangeNotifier {
 
     final localJob = getJobById(id);
     final localUrls = <String>[];
-
     if (localJob?.imageUrl != null && localJob!.imageUrl!.isNotEmpty) {
       localUrls.add(localJob.imageUrl!);
     }
@@ -1106,7 +1176,24 @@ class AppState extends ChangeNotifier {
       debugPrint('loadImages error: $e');
       _jobImages[id] = localUrls;
     }
+    notifyListeners();
+  }
 
+  // ==================================================================
+  // CHAT
+  // ==================================================================
+
+  /// Kalles av ChatScreen før første bygging. Henter historikk én gang
+  /// per jobId; realtime tar over for nye meldinger.
+  Future<void> loadMessagesForJob(String jobId) async {
+    if (jobId.isEmpty) return;
+    if (_loadedMessageJobIds.contains(jobId)) return;
+    _loadedMessageJobIds.add(jobId);
+
+    final remote = await _supabaseService.fetchMessagesForJob(jobId);
+    for (final m in remote) {
+      _mergeMessage(m);
+    }
     notifyListeners();
   }
 
@@ -1119,21 +1206,35 @@ class AppState extends ChangeNotifier {
   }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty && (imageUrl == null || imageUrl.isEmpty)) return;
+    if (_currentUser.id.isEmpty) return;
 
-    _messages.add(
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: jobId,
-        senderId: _currentUser.id,
-        text: trimmed,
-        createdAt: DateTime.now(),
-        replyToMessageId: replyToMessageId,
-        replyToText: replyToText,
-        imageUrl: imageUrl,
-      ),
+    final msg = ChatMessage(
+      id: _uuid.v4(),
+      jobId: jobId,
+      senderId: _currentUser.id,
+      text: trimmed,
+      createdAt: DateTime.now(),
+      replyToMessageId: replyToMessageId,
+      replyToText: replyToText,
+      imageUrl: imageUrl,
     );
 
-    // Varsle motparten på jobben, ikke deg selv.
+    // Optimistisk lokal innsetting for snappy UX; realtime-echo
+    // fra Supabase dedupliseres via id i _mergeMessage.
+    _mergeMessage(msg);
+    notifyListeners();
+
+    // Persister. Ved feil: fjern lokalt slik at UI ikke lyver.
+    _supabaseService.insertMessage(msg).then((saved) {
+      _mergeMessage(saved);
+      notifyListeners();
+    }).catchError((e) {
+      debugPrint('sendMessage error: $e');
+      _messages.removeWhere((m) => m.id == msg.id);
+      notifyListeners();
+    });
+
+    // Varsle motpart.
     final job = getJobById(jobId);
     if (job != null) {
       final otherParty = job.createdByUserId == _currentUser.id
@@ -1149,8 +1250,6 @@ class AppState extends ChangeNotifier {
         );
       }
     }
-
-    notifyListeners();
   }
 
   void toggleReaction(String messageId, String reaction) {
@@ -1158,17 +1257,26 @@ class AppState extends ChangeNotifier {
     if (index == -1) return;
 
     final message = _messages[index];
-    final updated = message.copyWith(
-      reaction: message.reaction == reaction ? null : reaction,
-    );
+    final nextReaction = message.reaction == reaction ? null : reaction;
+    final updated = message.copyWith(reaction: nextReaction);
     _messages[index] = updated;
     notifyListeners();
+
+    _supabaseService
+        .setMessageReaction(messageId: messageId, reaction: nextReaction)
+        .then((saved) {
+      if (saved != null) {
+        _mergeMessage(saved);
+        notifyListeners();
+      }
+    });
   }
 
   void setPushNotifications(bool value) {
     _currentUser = _currentUser.copyWith(pushNotificationsEnabled: value);
     _users[_currentUser.id] = _currentUser;
     notifyListeners();
+    _supabaseService.upsertProfile(_currentUser);
   }
 
   void updateProfile({
@@ -1190,8 +1298,6 @@ class AppState extends ChangeNotifier {
     _syncProfileToSupabase();
   }
 
-  // Rask redigering av navn + telefon fra profilen (bottom sheet).
-  // Lagrer både til lokal state og Supabase user_metadata.
   void updateBasicProfile({
     required String firstName,
     required String phone,
@@ -1207,8 +1313,6 @@ class AppState extends ChangeNotifier {
     _syncProfileToSupabase();
   }
 
-  // Persisterer valgene fra onboardingen tilbake til AppState.
-  // Kalles fra OnboardingScreen før navigasjon til /home.
   void applyOnboarding({
     required bool wantsToWork,
     required String preferredArea,
@@ -1222,7 +1326,6 @@ class AppState extends ChangeNotifier {
     _syncProfileToSupabase();
   }
 
-  // No-op: ekte auth er aktivert. Bytte bruker gjøres via logg ut + logg inn.
   void switchUser() {}
 
   void rateUser({required String userId, required double newRating}) {
@@ -1233,25 +1336,47 @@ class AppState extends ChangeNotifier {
     final nextCount = user.ratingCount + 1;
     final nextRating = total / nextCount;
 
-    _users[userId] = user.copyWith(
+    final updated = user.copyWith(
       rating: nextRating,
       ratingCount: nextCount,
     );
-
+    _users[userId] = updated;
     notifyListeners();
+
+    // Persister kun hvis det er din egen profil (RLS blokkerer ellers).
+    if (userId == _currentUser.id) {
+      _currentUser = updated;
+      _supabaseService.upsertProfile(updated);
+    }
   }
 
-  Future<void> _saveJobUpdate(
+  // ==================================================================
+  // _saveJobUpdate — SERVER-FIRST
+  // ==================================================================
+  Future<bool> _saveJobUpdate(
     Job updated, {
     String? systemMessage,
     String? notifyUserId,
     AppNotificationType? notificationType,
     String? notificationText,
   }) async {
-    _replaceJobLocally(updated);
+    Job? saved;
+    try {
+      saved = await _supabaseService.updateJob(updated);
+    } catch (e) {
+      debugPrint('_saveJobUpdate error: $e');
+      return false;
+    }
+
+    if (saved == null) {
+      await reloadJobs();
+      return false;
+    }
+
+    _replaceJobLocally(saved);
 
     if (systemMessage != null && systemMessage.isNotEmpty) {
-      _addSystemMessage(jobId: updated.id, text: systemMessage);
+      _addSystemMessage(jobId: saved.id, text: systemMessage);
     }
 
     if (notifyUserId != null &&
@@ -1263,21 +1388,12 @@ class AppState extends ChangeNotifier {
         recipientUserId: notifyUserId,
         type: notificationType,
         text: notificationText,
-        jobId: updated.id,
+        jobId: saved.id,
       );
     }
 
     notifyListeners();
-
-    try {
-      final saved = await _supabaseService.updateJob(updated);
-      if (saved != null) {
-        _replaceJobLocally(saved);
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('_saveJobUpdate error: $e');
-    }
+    return true;
   }
 
   void _replaceJobLocally(Job updated) {
@@ -1287,22 +1403,289 @@ class AppState extends ChangeNotifier {
     } else {
       _jobs[index] = updated;
     }
+    _hydrateProfilesForJob(updated);
   }
 
-  void _addSystemMessage({
-    required String jobId,
-    required String text,
-  }) {
-    _messages.add(
-      ChatMessage(
-        id: _uuid.v4(),
-        jobId: jobId,
-        senderId: 'system',
-        text: text,
-        createdAt: DateTime.now(),
-      ),
+  /// System-melding persisteres til chat_messages med sender_id = NULL.
+  void _addSystemMessage({required String jobId, required String text}) {
+    final msg = ChatMessage(
+      id: _uuid.v4(),
+      jobId: jobId,
+      senderId: 'system',
+      text: text,
+      createdAt: DateTime.now(),
     );
+    _mergeMessage(msg);
+    _supabaseService.insertMessage(msg).then((saved) {
+      _mergeMessage(saved);
+      notifyListeners();
+    }).catchError((e) {
+      debugPrint('system message insert error: $e');
+    });
   }
+
+  void _mergeMessage(ChatMessage msg) {
+    final idx = _messages.indexWhere((m) => m.id == msg.id);
+    if (idx == -1) {
+      _messages.add(msg);
+    } else {
+      _messages[idx] = msg;
+    }
+  }
+
+  // ==================================================================
+  // PROFILES — cache + on-demand hydrering
+  // ==================================================================
+
+  void _ensureProfileLoaded(String id) {
+    if (_profilesRequested.contains(id)) return;
+    _profilesRequested.add(id);
+    _supabaseService.fetchProfile(id).then((p) {
+      if (p == null) return;
+      _users[p.id] = p;
+      notifyListeners();
+    });
+  }
+
+  void _hydrateProfilesForJob(Job job) {
+    _ensureProfileLoaded(job.createdByUserId);
+    final accepted = job.acceptedByUserId;
+    if (accepted != null && accepted.isNotEmpty) {
+      _ensureProfileLoaded(accepted);
+    }
+  }
+
+  Future<void> _hydrateProfilesForLoadedJobs() async {
+    final ids = <String>{};
+    for (final j in _jobs) {
+      ids.add(j.createdByUserId);
+      final a = j.acceptedByUserId;
+      if (a != null && a.isNotEmpty) ids.add(a);
+    }
+    ids.removeWhere((id) => _users.containsKey(id) || id.isEmpty);
+    if (ids.isEmpty) return;
+    _profilesRequested.addAll(ids);
+    final profiles = await _supabaseService.fetchProfiles(ids);
+    for (final p in profiles) {
+      _users[p.id] = p;
+    }
+    notifyListeners();
+  }
+
+  // ==================================================================
+  // NOTIFICATIONS — initial load
+  // ==================================================================
+
+  Future<void> _loadNotifications() async {
+    if (_currentUser.id.isEmpty) return;
+    final rows = await _supabaseService.fetchNotifications(_currentUser.id);
+    _notifications.clear();
+    for (final r in rows) {
+      _notifications.add(AppNotification.fromSupabase(r));
+    }
+    notifyListeners();
+  }
+
+  // ==================================================================
+  // REALTIME — jobs, chat_messages, notifications, profiles
+  // ==================================================================
+
+  void _setupJobsSubscription() {
+    if (_jobsChannel != null) return;
+    final channel = _client.channel('public:jobs:smarthjelp');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'jobs',
+      callback: (payload) => _handleRemoteJobUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'jobs',
+      callback: (payload) => _handleRemoteJobUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.delete,
+      schema: 'public',
+      table: 'jobs',
+      callback: (payload) {
+        final oldId = payload.oldRecord['id']?.toString();
+        if (oldId != null && oldId.isNotEmpty) _handleRemoteJobDelete(oldId);
+      },
+    );
+    channel.subscribe();
+    _jobsChannel = channel;
+  }
+
+  void _handleRemoteJobUpsert(Map<String, dynamic> row) {
+    if (row.isEmpty) return;
+    try {
+      final job = Job.fromSupabase(Map<String, dynamic>.from(row));
+      _replaceJobLocally(job);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('realtime job upsert error: $e');
+    }
+  }
+
+  void _handleRemoteJobDelete(String id) {
+    final before = _jobs.length;
+    _jobs.removeWhere((j) => j.id == id);
+    if (_jobs.length != before) notifyListeners();
+  }
+
+  void _setupChatSubscription() {
+    if (_chatChannel != null) return;
+    final channel = _client.channel('public:chat:smarthjelp');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'chat_messages',
+      callback: (payload) => _handleRemoteMessageUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'chat_messages',
+      callback: (payload) => _handleRemoteMessageUpsert(payload.newRecord),
+    );
+    channel.subscribe();
+    _chatChannel = channel;
+  }
+
+  void _handleRemoteMessageUpsert(Map<String, dynamic> row) {
+    if (row.isEmpty) return;
+    try {
+      final msg = ChatMessage.fromSupabase(Map<String, dynamic>.from(row));
+      _mergeMessage(msg);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('realtime chat upsert error: $e');
+    }
+  }
+
+  void _setupNotificationsSubscription() {
+    if (_notificationsChannel != null) return;
+    final channel = _client.channel('public:notifications:smarthjelp');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'notifications',
+      callback: (payload) =>
+          _handleRemoteNotificationUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'notifications',
+      callback: (payload) =>
+          _handleRemoteNotificationUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.delete,
+      schema: 'public',
+      table: 'notifications',
+      callback: (payload) {
+        final id = payload.oldRecord['id']?.toString();
+        if (id == null) return;
+        _notifications.removeWhere((n) => n.id == id);
+        notifyListeners();
+      },
+    );
+    channel.subscribe();
+    _notificationsChannel = channel;
+  }
+
+  void _handleRemoteNotificationUpsert(Map<String, dynamic> row) {
+    if (row.isEmpty) return;
+    try {
+      final n = AppNotification.fromSupabase(Map<String, dynamic>.from(row));
+      if (n.recipientUserId != _currentUser.id) return; // safety
+      final idx = _notifications.indexWhere((x) => x.id == n.id);
+      if (idx == -1) {
+        _notifications.add(n);
+      } else {
+        _notifications[idx] = n;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('realtime notification upsert error: $e');
+    }
+  }
+
+  void _setupProfilesSubscription() {
+    if (_profilesChannel != null) return;
+    final channel = _client.channel('public:profiles:smarthjelp');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'profiles',
+      callback: (payload) => _handleRemoteProfileUpsert(payload.newRecord),
+    );
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'profiles',
+      callback: (payload) => _handleRemoteProfileUpsert(payload.newRecord),
+    );
+    channel.subscribe();
+    _profilesChannel = channel;
+  }
+
+  void _handleRemoteProfileUpsert(Map<String, dynamic> row) {
+    if (row.isEmpty) return;
+    try {
+      final p = UserProfile.fromSupabase(Map<String, dynamic>.from(row));
+      if (p.id.isEmpty) return;
+      _users[p.id] = p;
+      if (p.id == _currentUser.id) {
+        _currentUser = _currentUser.copyWith(
+          firstName: p.firstName,
+          phone: p.phone,
+          wantsToWork: p.wantsToWork,
+          preferredArea: p.preferredArea,
+          rating: p.rating,
+          ratingCount: p.ratingCount,
+          isVerified: p.isVerified,
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('realtime profile upsert error: $e');
+    }
+  }
+
+  Future<void> _teardownAllRealtime() async {
+    final channels = [
+      _jobsChannel,
+      _chatChannel,
+      _notificationsChannel,
+      _profilesChannel,
+    ];
+    _jobsChannel = null;
+    _chatChannel = null;
+    _notificationsChannel = null;
+    _profilesChannel = null;
+    for (final c in channels) {
+      if (c == null) continue;
+      try {
+        await _client.removeChannel(c);
+      } catch (e) {
+        debugPrint('realtime teardown error: $e');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _teardownAllRealtime();
+    super.dispose();
+  }
+
+  // ==================================================================
+  // LEGACY / SEED — beholdt for kompatibilitet
+  // ==================================================================
 
   static const String _seedOwnerId = '00000000-0000-0000-0000-000000000001';
   static const String _seedWorkerId = '00000000-0000-0000-0000-000000000002';
@@ -1385,9 +1768,7 @@ class AppState extends ChangeNotifier {
   }
 
   String formatDistance(double meters) {
-    if (meters < 1000) {
-      return '${meters.round()} m unna';
-    }
+    if (meters < 1000) return '${meters.round()} m unna';
     final km = meters / 1000.0;
     return '${km.toStringAsFixed(1)} km unna';
   }

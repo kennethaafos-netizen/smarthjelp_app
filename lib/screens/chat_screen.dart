@@ -1,5 +1,8 @@
 // UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +10,8 @@ import '../models/chat_message.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
+import '../services/supabase_service.dart';
+import 'job_detail_screen.dart';
 
 const Color _primary = Color(0xFF2356E8);
 const Color _accent = Color(0xFF18B7A6);
@@ -27,9 +32,13 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _ctrl = TextEditingController();
   final ScrollController _listCtrl = ScrollController();
+  final SupabaseService _supabase = SupabaseService();
+  final ImagePicker _imagePicker = ImagePicker();
+
   ChatMessage? _replyTo;
   bool _summaryExpanded = true;
   bool _hasText = false;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
@@ -37,6 +46,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.addListener(() {
       final has = _ctrl.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppState>().loadMessagesForJob(widget.job.id);
     });
   }
 
@@ -73,23 +85,25 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  UserProfile? _counterparty(AppState app) {
+  UserProfile? _counterparty(AppState app, Job job) {
     final me = app.currentUser.id;
-    if (widget.job.createdByUserId == me) {
-      final taker = widget.job.acceptedByUserId;
+    if (job.createdByUserId == me) {
+      final taker = job.acceptedByUserId;
       if (taker == null) return null;
       return app.getUserById(taker);
     }
-    return app.getUserById(widget.job.createdByUserId);
+    return app.getUserById(job.createdByUserId);
   }
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final messages = appState.getMessagesForJob(widget.job.id);
+    // Bruk alltid siste versjon av jobben fra state (realtime-oppdateringer).
+    final liveJob = appState.getJobById(widget.job.id) ?? widget.job;
+    final messages = appState.getMessagesForJob(liveJob.id);
     final currentUser = appState.currentUser;
-    final counter = _counterparty(appState);
-    final counterName = counter?.firstName ?? 'Ukjent bruker';
+    final counter = _counterparty(appState, liveJob);
+    final counterName = counter?.firstName ?? 'Bruker';
     final initials = counterName.isNotEmpty ? counterName[0].toUpperCase() : '?';
 
     return Scaffold(
@@ -122,28 +136,41 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const SizedBox(height: 1),
-                  Row(
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: _online,
-                          shape: BoxShape.circle,
+                  if (counter != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            size: 13, color: Color(0xFFF5B301)),
+                        const SizedBox(width: 3),
+                        Text(
+                          counter.rating.toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: _textMuted,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11.5,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'Aktiv nå',
-                        style: TextStyle(
-                          color: _online,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11.5,
-                          letterSpacing: 0.2,
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: _online,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'Aktiv nå',
+                          style: TextStyle(
+                            color: _online,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11.5,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -151,13 +178,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Flere valg',
-            icon: const Icon(Icons.more_horiz_rounded),
+            tooltip: 'Gå til oppdrag',
+            icon: const Icon(Icons.assignment_outlined),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  content: Text('Flere valg kommer snart.'),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => JobDetailScreen(job: liveJob),
                 ),
               );
             },
@@ -167,7 +194,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          _jobSummaryCard(),
+          _jobSummaryCard(liveJob),
           Expanded(
             child: messages.isEmpty
                 ? _emptyChat()
@@ -182,16 +209,16 @@ class _ChatScreenState extends State<ChatScreen> {
                       final sender = appState
                               .getUserById(msg.senderId)
                               ?.firstName ??
-                          'Bruker';
+                          (msg.senderId == 'system' ? 'System' : 'Bruker');
 
                       return GestureDetector(
                         onLongPress: () {
-                          if (msg.senderId != 'system') {
+                          if (!msg.isSystem) {
                             setState(() => _replyTo = msg);
                           }
                         },
                         onTap: () {
-                          if (msg.senderId != 'system') {
+                          if (!msg.isSystem) {
                             appState.toggleReaction(msg.id, '❤️');
                           }
                         },
@@ -201,7 +228,37 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
           ),
           if (_replyTo != null) _replyPreview(),
+          if (_isUploadingImage) _uploadingStrip(),
           _inputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _uploadingStrip() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: const [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 10),
+          Text(
+            'Laster opp bilde…',
+            style: TextStyle(
+              color: _textMuted,
+              fontWeight: FontWeight.w600,
+              fontSize: 12.5,
+            ),
+          ),
         ],
       ),
     );
@@ -250,8 +307,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _jobSummaryCard() {
-    final job = widget.job;
+  Widget _jobSummaryCard(Job job) {
     final statusColor = _statusColor(job.status);
     final price = NumberFormat.decimalPattern('nb_NO').format(job.price);
 
@@ -390,6 +446,31 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: _primary.withOpacity(0.4)),
+                foregroundColor: _primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => JobDetailScreen(job: job),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text(
+                'Gå til oppdrag',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
           ],
         ],
       ),
@@ -433,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _replyTo!.text,
+                  _replyTo!.text.isEmpty ? '📎 Bilde' : _replyTo!.text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -507,7 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildBubble(ChatMessage msg, bool isMe, String name) {
     final time = DateFormat.Hm().format(msg.createdAt);
-    final isSystem = msg.senderId == 'system';
+    final isSystem = msg.isSystem;
 
     if (isSystem) {
       return Center(
@@ -768,14 +849,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     InkResponse(
                       radius: 22,
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            behavior: SnackBarBehavior.floating,
-                            content: Text('Kamera kommer snart.'),
-                          ),
-                        );
-                      },
+                      onTap: _isUploadingImage ? null : _pickFromCamera,
                       child: const Padding(
                         padding: EdgeInsets.fromLTRB(4, 10, 12, 10),
                         child: Icon(
@@ -800,7 +874,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _attachButton() {
     return InkResponse(
       radius: 24,
-      onTap: _showAttachmentSheet,
+      onTap: _isUploadingImage ? null : _showAttachmentSheet,
       child: Container(
         width: 44,
         height: 44,
@@ -826,7 +900,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _sendButton() {
-    final enabled = _hasText;
+    final enabled = _hasText && !_isUploadingImage;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 150),
       opacity: enabled ? 1.0 : 0.55,
@@ -887,18 +961,35 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: _primary,
                   title: 'Bilde fra galleri',
                   subtitle: 'Del et bilde av stedet',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromGallery();
+                  },
                 ),
                 _attachTile(
-                  icon: Icons.place_outlined,
+                  icon: Icons.camera_alt_outlined,
                   color: _accent,
-                  title: 'Del lokasjon',
-                  subtitle: 'Send inn en pinn på kartet',
+                  title: 'Ta et nytt bilde',
+                  subtitle: 'Åpne kamera',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromCamera();
+                  },
                 ),
                 _attachTile(
-                  icon: Icons.calendar_today_outlined,
+                  icon: Icons.assignment_outlined,
                   color: const Color(0xFFF59E0B),
-                  title: 'Foreslå tidspunkt',
-                  subtitle: 'Avtal når dere møtes',
+                  title: 'Gå til oppdrag',
+                  subtitle: 'Åpne detaljer om oppdraget',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => JobDetailScreen(job: widget.job),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -913,18 +1004,11 @@ class _ChatScreenState extends State<ChatScreen> {
     required Color color,
     required String title,
     required String subtitle,
+    required VoidCallback onTap,
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text('$title kommer snart.'),
-          ),
-        );
-      },
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
@@ -971,6 +1055,93 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _pickFromCamera() async {
+    if (_isUploadingImage) return;
+    if (kIsWeb) {
+      // image_picker.source.camera støttes ikke på web — fall tilbake til gallery.
+      await _pickFromGallery();
+      return;
+    }
+    try {
+      final img = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (img == null) return;
+      final bytes = await img.readAsBytes();
+      await _uploadAndSend(bytes, img.name);
+    } catch (e) {
+      debugPrint('camera error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kunne ikke åpne kamera.')),
+      );
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    if (_isUploadingImage) return;
+    try {
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty) return;
+        final file = result.files.first;
+        final bytes = file.bytes;
+        if (bytes == null) return;
+        await _uploadAndSend(bytes, file.name);
+      } else {
+        final img = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 85,
+        );
+        if (img == null) return;
+        final bytes = await img.readAsBytes();
+        await _uploadAndSend(bytes, img.name);
+      }
+    } catch (e) {
+      debugPrint('gallery error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kunne ikke velge bilde.')),
+      );
+    }
+  }
+
+  Future<void> _uploadAndSend(Uint8List bytes, String fileName) async {
+    setState(() => _isUploadingImage = true);
+    try {
+      final url = await _supabase.uploadChatImage(
+        bytes: bytes,
+        originalFileName: fileName,
+      );
+      if (url == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kunne ikke laste opp bilde.')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      context.read<AppState>().sendMessage(
+            jobId: widget.job.id,
+            text: _ctrl.text.trim(),
+            imageUrl: url,
+            replyToMessageId: _replyTo?.id,
+            replyToText: _replyTo?.text,
+          );
+      _ctrl.clear();
+      setState(() {
+        _replyTo = null;
+        _hasText = false;
+      });
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
+  }
+
   void _handleSend() {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
@@ -985,7 +1156,6 @@ class _ChatScreenState extends State<ChatScreen> {
         );
 
     _ctrl.clear();
-
     if (mounted) {
       setState(() {
         _replyTo = null;
