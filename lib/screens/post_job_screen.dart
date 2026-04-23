@@ -11,7 +11,6 @@ import '../services/supabase_service.dart';
 
 class PostJobScreen extends StatefulWidget {
   final Job? existingJob;
-
   const PostJobScreen({super.key, this.existingJob});
 
   @override
@@ -24,15 +23,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
   final _price = TextEditingController();
   final _postcode = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
   final PageController _controller = PageController();
 
   String? category;
-
   List<XFile> images = [];
   int currentIndex = 0;
   bool _isSubmitting = false;
-
   String? _editKommune;
 
   bool get _isEditing => widget.existingJob != null;
@@ -46,9 +42,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       _desc.text = job.description;
       _price.text = job.price.toString();
       category = job.category;
-      _editKommune = kLocations.contains(job.locationName)
-          ? job.locationName
-          : kLocations.first;
+      _editKommune = kLocations.contains(job.locationName) ? job.locationName : kLocations.first;
     }
   }
 
@@ -81,28 +75,16 @@ class _PostJobScreenState extends State<PostJobScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Rediger oppdrag' : 'Legg ut oppdrag'),
-      ),
+      appBar: AppBar(title: Text(_isEditing ? 'Rediger oppdrag' : 'Legg ut oppdrag')),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            MediaQuery.of(context).padding.bottom + 140,
-          ),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 140),
           children: [
             if (!_isEditing) _imagePicker(),
             _field(_title, 'Tittel'),
             _field(_desc, 'Beskrivelse', maxLines: 4),
-            _field(
-              _price,
-              'Pris til oppdragstaker (kr)',
-              number: true,
-              onChanged: (_) => setState(() {}),
-            ),
+            _field(_price, 'Pris til oppdragstaker (kr)', number: true, onChanged: (_) => setState(() {})),
             if (_priceValue > 0) ...[
               const SizedBox(height: 10),
               Container(
@@ -115,66 +97,31 @@ class _PostJobScreenState extends State<PostJobScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Til oppdragstaker: $_priceValue kr',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F1E3A),
-                      ),
-                    ),
+                    Text('Til oppdragstaker: $_priceValue kr',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF0F1E3A))),
                     const SizedBox(height: 6),
-                    Text(
-                      'Plattformavgift: ${_feeValue.toStringAsFixed(0)} kr inkl. mva',
-                      style: const TextStyle(
-                        color: Color(0xFF6E7A90),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text('Plattformavgift: ${_feeValue.toStringAsFixed(0)} kr inkl. mva',
+                        style: const TextStyle(color: Color(0xFF6E7A90), fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
-                    Text(
-                      'Du betaler totalt: ${_totalValue.toStringAsFixed(0)} kr',
-                      style: const TextStyle(
-                        color: Color(0xFF2356E8),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                    Text('Du betaler totalt: ${_totalValue.toStringAsFixed(0)} kr',
+                        style: const TextStyle(color: Color(0xFF2356E8), fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Beløpet holdes trygt av SmartHjelp til du godkjenner fullført jobb.',
-                      style: TextStyle(
-                        color: Color(0xFF0EA877),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    const Text('Beløpet holdes trygt av SmartHjelp til du godkjenner fullført jobb.',
+                        style: TextStyle(color: Color(0xFF0EA877), fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
             ],
-            _dropdown(
-              kCategories,
-              category,
-              'Kategori',
-              (v) => setState(() => category = v),
-            ),
+            _dropdown(kCategories, category, 'Kategori', (v) => setState(() => category = v)),
             if (_isEditing)
-              _dropdown(
-                kLocations,
-                _editKommune,
-                'Kommune',
-                (v) => setState(() => _editKommune = v),
-              )
+              _dropdown(kLocations, _editKommune, 'Kommune', (v) => setState(() => _editKommune = v))
             else
               _postcodeField(),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : Text(_isEditing ? 'Lagre endringer' : 'Publiser'),
             ),
           ],
@@ -191,10 +138,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           child: Container(
             height: 180,
             width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(14),
-            ),
+            decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(14)),
             child: images.isEmpty
                 ? const Center(child: Text('Velg bilder'))
                 : const Center(child: Text('Endre bilder')),
@@ -212,65 +156,39 @@ class _PostJobScreenState extends State<PostJobScreen> {
                   onPageChanged: (i) => setState(() => currentIndex = i),
                   itemBuilder: (_, index) {
                     final img = images[index];
-
                     return FutureBuilder(
                       future: img.readAsBytes(),
                       builder: (_, snap) {
-                        if (!snap.hasData) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        return Image.memory(
-                          snap.data!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                        );
+                        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                        return Image.memory(snap.data!, fit: BoxFit.cover, width: double.infinity);
                       },
                     );
                   },
                 ),
                 Positioned(
-                  left: 10,
-                  top: 0,
-                  bottom: 0,
+                  left: 10, top: 0, bottom: 0,
                   child: IconButton(
                     icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
                     onPressed: currentIndex > 0
-                        ? () => _controller.previousPage(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.ease,
-                            )
+                        ? () => _controller.previousPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
                         : null,
                   ),
                 ),
                 Positioned(
-                  right: 10,
-                  top: 0,
-                  bottom: 0,
+                  right: 10, top: 0, bottom: 0,
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios,
-                        color: Colors.white),
+                    icon: const Icon(Icons.arrow_forward_ios, color: Colors.white),
                     onPressed: currentIndex < images.length - 1
-                        ? () => _controller.nextPage(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.ease,
-                            )
+                        ? () => _controller.nextPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
                         : null,
                   ),
                 ),
                 Positioned(
-                  bottom: 10,
-                  right: 10,
+                  bottom: 10, right: 10,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     color: Colors.black54,
-                    child: Text(
-                      '${currentIndex + 1}/${images.length}',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+                    child: Text('${currentIndex + 1}/${images.length}', style: const TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
@@ -284,12 +202,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
   Future<void> _pickImages() async {
     try {
       if (kIsWeb) {
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.image,
-          allowMultiple: true,
-          withData: true,
-        );
-
+        final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: true, withData: true);
         if (result != null) {
           setState(() {
             images = result.files
@@ -302,10 +215,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         }
       } else {
         final picked = await ImagePicker().pickMultiImage();
-        setState(() {
-          images = picked.take(5).toList();
-          currentIndex = 0;
-        });
+        setState(() { images = picked.take(5).toList(); currentIndex = 0; });
       }
     } catch (e) {
       debugPrint('Image pick error: $e');
@@ -323,13 +233,9 @@ class _PostJobScreenState extends State<PostJobScreen> {
     } else {
       final derived = _derivedKommune;
       if (derived == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Postnummeret er ikke i SmartHjelp sitt dekningsområde (Skien, Porsgrunn, Siljan, Bamble).',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Postnummeret er ikke i SmartHjelp sitt dekningsområde (Skien, Porsgrunn, Siljan, Bamble).'),
+        ));
         return;
       }
       kommune = derived;
@@ -337,9 +243,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     final parsedPrice = int.tryParse(_price.text.trim());
     if (parsedPrice == null || parsedPrice <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pris må være et gyldig tall')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pris må være et gyldig tall')));
       return;
     }
 
@@ -347,7 +251,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     try {
       final appState = context.read<AppState>();
-
       if (_isEditing) {
         final ok = await appState.updateOwnJob(
           jobId: widget.existingJob!.id,
@@ -359,20 +262,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
           lat: _latForLocation(kommune),
           lng: _lngForLocation(kommune),
         );
-
         if (!mounted) return;
-
         if (ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Oppdrag oppdatert')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Oppdrag oppdatert')));
           Navigator.of(context).pop();
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Kunne ikke oppdatere oppdraget.'),
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunne ikke oppdatere oppdraget.')));
         }
       } else {
         final supabase = SupabaseService();
@@ -382,12 +277,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         for (final img in images) {
           try {
             final bytes = await img.readAsBytes();
-
-            final url = await supabase.uploadJobImage(
-              bytes: bytes,
-              originalFileName: img.name,
-            );
-
+            final url = await supabase.uploadJobImage(bytes: bytes, originalFileName: img.name);
             if (url != null) {
               urls.add(url);
             } else if (!kIsWeb && img.path.isNotEmpty) {
@@ -395,14 +285,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
             }
           } catch (e) {
             debugPrint('Upload error: $e');
-            if (!kIsWeb && img.path.isNotEmpty) {
-              localFallbacks.add(img.path);
-            }
+            if (!kIsWeb && img.path.isNotEmpty) localFallbacks.add(img.path);
           }
         }
 
         final allUrls = [...urls, ...localFallbacks];
-
         final ok = await appState.addJob(
           title: _title.text.trim(),
           description: _desc.text.trim(),
@@ -415,49 +302,27 @@ class _PostJobScreenState extends State<PostJobScreen> {
           imageUrls: allUrls,
         );
 
-        if (ok) {
-          await appState.reloadJobs();
-        }
-
+        if (ok) await appState.reloadJobs();
         if (!mounted) return;
 
         if (!ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.',
-              ),
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.'),
+          ));
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Oppdrag publisert')),
-          );
-
-          _title.clear();
-          _desc.clear();
-          _price.clear();
-          _postcode.clear();
-
-          setState(() {
-            images = [];
-            category = null;
-            currentIndex = 0;
-          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Oppdrag publisert')));
+          _title.clear(); _desc.clear(); _price.clear(); _postcode.clear();
+          setState(() { images = []; category = null; currentIndex = 0; });
         }
       }
     } catch (e) {
       debugPrint('Submit error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Noe gikk galt under publisering')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Noe gikk galt under publisering')));
       }
     }
 
-    if (mounted) {
-      setState(() => _isSubmitting = false);
-    }
+    if (mounted) setState(() => _isSubmitting = false);
   }
 
   Widget _field(
@@ -467,16 +332,23 @@ class _PostJobScreenState extends State<PostJobScreen> {
     int maxLines = 1,
     ValueChanged<String>? onChanged,
   }) {
+    // FASE 3 FIX: multiline felt skal gi newline når brukeren trykker Enter,
+    // ikke submit. Dette krever TextInputType.multiline + newline-action.
+    final isMultiline = maxLines > 1;
+    final keyboard = number
+        ? TextInputType.number
+        : (isMultiline ? TextInputType.multiline : TextInputType.text);
+    final action = isMultiline ? TextInputAction.newline : TextInputAction.next;
+
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: TextFormField(
         controller: c,
-        keyboardType:
-            number ? TextInputType.number : TextInputType.text,
+        keyboardType: keyboard,
+        textInputAction: action,
         maxLines: maxLines,
         onChanged: onChanged,
-        validator: (v) =>
-            (v == null || v.isEmpty) ? '$hint må fylles ut' : null,
+        validator: (v) => (v == null || v.isEmpty) ? '$hint må fylles ut' : null,
         decoration: InputDecoration(hintText: hint),
       ),
     );
@@ -486,7 +358,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
     final kommune = _derivedKommune;
     final hasInput = _postcode.text.trim().isNotEmpty;
     final isValid = kommune != null;
-
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
@@ -498,30 +369,19 @@ class _PostJobScreenState extends State<PostJobScreen> {
             maxLength: 4,
             onChanged: (_) => setState(() {}),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) {
-                return 'Postnummer må fylles ut';
-              }
-              if (_kommuneForPostcode(v) == null) {
-                return 'Postnummeret er utenfor dekningsområdet';
-              }
+              if (v == null || v.trim().isEmpty) return 'Postnummer må fylles ut';
+              if (_kommuneForPostcode(v) == null) return 'Postnummeret er utenfor dekningsområdet';
               return null;
             },
-            decoration: const InputDecoration(
-              hintText: 'Postnummer (f.eks. 3717)',
-              counterText: '',
-            ),
+            decoration: const InputDecoration(hintText: 'Postnummer (f.eks. 3717)', counterText: ''),
           ),
           if (hasInput)
             Padding(
               padding: const EdgeInsets.only(top: 6, left: 4),
               child: Text(
-                isValid
-                    ? 'Kommune: $kommune'
-                    : 'Utenfor dekningsområdet (Skien, Porsgrunn, Siljan, Bamble)',
+                isValid ? 'Kommune: $kommune' : 'Utenfor dekningsområdet (Skien, Porsgrunn, Siljan, Bamble)',
                 style: TextStyle(
-                  color: isValid
-                      ? const Color(0xFF0EA877)
-                      : const Color(0xFFDC2626),
+                  color: isValid ? const Color(0xFF0EA877) : const Color(0xFFDC2626),
                   fontWeight: FontWeight.w700,
                   fontSize: 12.5,
                 ),
@@ -532,23 +392,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
     );
   }
 
-  Widget _dropdown(
-    List<String> list,
-    String? value,
-    String label,
-    Function(String?) onChanged,
-  ) {
+  Widget _dropdown(List<String> list, String? value, String label, Function(String?) onChanged) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
         value: value,
-        items: list
-            .map((e) =>
-                DropdownMenuItem(value: e, child: Text(e)))
-            .toList(),
+        items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
-        validator: (v) =>
-            v == null ? '$label må velges' : null,
+        validator: (v) => v == null ? '$label må velges' : null,
         decoration: InputDecoration(labelText: label),
       ),
     );

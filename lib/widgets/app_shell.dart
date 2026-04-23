@@ -18,16 +18,40 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
+  // FASE 3 FIX: når HomeScreen banner klikkes skal vi åpne Oppdrag-fanen
+  // på riktig underfane (Mine/Tatt). Key'en tvinger JobsScreen til å
+  // re-konstruere slik at `initialTab` leses på nytt hver gang.
+  JobsTab? _pendingJobsTab;
+  Key _jobsKey = const ValueKey('jobs:initial');
+
   void _onNavigate(int i) {
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      // Hvis brukeren navigerer til Jobs via bottom-bar (ikke via banner),
+      // nullstiller vi tab-ønsket slik at JobsScreen følger sin egen state.
+      if (i == 1) {
+        _pendingJobsTab = null;
+      }
+    });
+  }
+
+  void _onNavigateToJobsTab(JobsTab tab) {
+    setState(() {
+      _index = 1;
+      _pendingJobsTab = tab;
+      _jobsKey = ValueKey('jobs:${tab.name}:${DateTime.now().microsecondsSinceEpoch}');
+    });
   }
 
   Widget _buildScreen() {
     switch (_index) {
       case 0:
-        return HomeScreen(onNavigate: _onNavigate);
+        return HomeScreen(
+          onNavigate: _onNavigate,
+          onNavigateToJobsTab: _onNavigateToJobsTab,
+        );
       case 1:
-        return const JobsScreen();
+        return JobsScreen(key: _jobsKey, initialTab: _pendingJobsTab);
       case 2:
         return const PostJobScreen();
       case 3:
@@ -35,7 +59,10 @@ class _AppShellState extends State<AppShell> {
       case 4:
         return const ProfileScreen();
       default:
-        return HomeScreen(onNavigate: _onNavigate);
+        return HomeScreen(
+          onNavigate: _onNavigate,
+          onNavigateToJobsTab: _onNavigateToJobsTab,
+        );
     }
   }
 

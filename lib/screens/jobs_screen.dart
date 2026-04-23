@@ -15,7 +15,9 @@ enum JobSortOption {
   popular,
 }
 
-enum _JobsTab { all, mine, taken }
+// FASE 3 FIX: gjort offentlig så AppShell / HomeScreen kan sende brukeren
+// direkte til en valgt tab via `JobsScreen.initialTab`.
+enum JobsTab { all, mine, taken }
 
 enum JobsFilter {
   all,
@@ -31,9 +33,13 @@ const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
 
 class JobsScreen extends StatefulWidget {
-  const JobsScreen({super.key, this.initialFilter});
+  const JobsScreen({super.key, this.initialFilter, this.initialTab});
 
   final JobsFilter? initialFilter;
+  // FASE 3 FIX: velg hvilken fane som skal være aktiv ved første build.
+  // Brukes av HomeScreen banner + AppShell for å åpne «Mine» / «Tatt»
+  // direkte når bruker klikker aktivt-oppdrag-banneret.
+  final JobsTab? initialTab;
 
   @override
   State<JobsScreen> createState() => _JobsScreenState();
@@ -42,7 +48,7 @@ class JobsScreen extends StatefulWidget {
 class _JobsScreenState extends State<JobsScreen> {
   JobSortOption _sort = JobSortOption.newest;
   bool _showOnlyOpen = false;
-  _JobsTab _activeTab = _JobsTab.all;
+  late JobsTab _activeTab = widget.initialTab ?? JobsTab.all;
   bool _isRefreshing = false;
 
   bool get _isFilteredView =>
@@ -173,15 +179,15 @@ class _JobsScreenState extends State<JobsScreen> {
     late final List<Job> visibleJobs;
     late final String emptyText;
     switch (_activeTab) {
-      case _JobsTab.all:
+      case JobsTab.all:
         visibleJobs = all;
         emptyText = 'Ingen åpne oppdrag akkurat nå.';
         break;
-      case _JobsTab.mine:
+      case JobsTab.mine:
         visibleJobs = mine;
         emptyText = 'Du har ikke lagt ut noen oppdrag enda.';
         break;
-      case _JobsTab.taken:
+      case JobsTab.taken:
         visibleJobs = taken;
         emptyText = 'Du har ikke tatt noen oppdrag enda.';
         break;
@@ -246,7 +252,7 @@ class _JobsScreenState extends State<JobsScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                       children: [
-                        if (_activeTab == _JobsTab.all) ...[
+                        if (_activeTab == JobsTab.all) ...[
                           _topControls(context),
                           const SizedBox(height: 18),
                         ],
@@ -405,9 +411,9 @@ class _JobsScreenState extends State<JobsScreen> {
     JobsFilter? filter,
   }) {
     final widgets = <Widget>[];
-    final isAllTab = filter == null && _activeTab == _JobsTab.all;
-    final isMineTab = filter == null && _activeTab == _JobsTab.mine;
-    final isTakenTab = filter == null && _activeTab == _JobsTab.taken;
+    final isAllTab = filter == null && _activeTab == JobsTab.all;
+    final isMineTab = filter == null && _activeTab == JobsTab.mine;
+    final isTakenTab = filter == null && _activeTab == JobsTab.taken;
 
     final showOwnerActions = isMineTab ||
         filter == JobsFilter.postedActive ||
@@ -661,22 +667,22 @@ class _JobsScreenState extends State<JobsScreen> {
             _tabPill(
               label: 'Alle oppdrag',
               count: allCount,
-              active: _activeTab == _JobsTab.all,
-              onTap: () => setState(() => _activeTab = _JobsTab.all),
+              active: _activeTab == JobsTab.all,
+              onTap: () => setState(() => _activeTab = JobsTab.all),
             ),
             const SizedBox(width: 8),
             _tabPill(
               label: 'Mine',
               count: mineCount,
-              active: _activeTab == _JobsTab.mine,
-              onTap: () => setState(() => _activeTab = _JobsTab.mine),
+              active: _activeTab == JobsTab.mine,
+              onTap: () => setState(() => _activeTab = JobsTab.mine),
             ),
             const SizedBox(width: 8),
             _tabPill(
               label: 'Tatt',
               count: takenCount,
-              active: _activeTab == _JobsTab.taken,
-              onTap: () => setState(() => _activeTab = _JobsTab.taken),
+              active: _activeTab == JobsTab.taken,
+              onTap: () => setState(() => _activeTab = JobsTab.taken),
             ),
           ],
         ),

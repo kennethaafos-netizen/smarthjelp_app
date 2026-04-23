@@ -61,27 +61,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _statusLabel(JobStatus s) {
     switch (s) {
-      case JobStatus.open:
-        return 'Åpen';
-      case JobStatus.reserved:
-        return 'Reservert';
-      case JobStatus.inProgress:
-        return 'Pågår';
-      case JobStatus.completed:
-        return 'Fullført';
+      case JobStatus.open: return 'Åpen';
+      case JobStatus.reserved: return 'Reservert';
+      case JobStatus.inProgress: return 'Pågår';
+      case JobStatus.completed: return 'Fullført';
     }
   }
 
   Color _statusColor(JobStatus s) {
     switch (s) {
-      case JobStatus.open:
-        return _primary;
-      case JobStatus.reserved:
-        return const Color(0xFFF59E0B);
-      case JobStatus.inProgress:
-        return _accent;
-      case JobStatus.completed:
-        return _online;
+      case JobStatus.open: return _primary;
+      case JobStatus.reserved: return const Color(0xFFF59E0B);
+      case JobStatus.inProgress: return _accent;
+      case JobStatus.completed: return _online;
     }
   }
 
@@ -98,7 +90,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    // Bruk alltid siste versjon av jobben fra state (realtime-oppdateringer).
     final liveJob = appState.getJobById(widget.job.id) ?? widget.job;
     final messages = appState.getMessagesForJob(liveJob.id);
     final currentUser = appState.currentUser;
@@ -139,8 +130,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (counter != null)
                     Row(
                       children: [
-                        const Icon(Icons.star_rounded,
-                            size: 13, color: Color(0xFFF5B301)),
+                        const Icon(Icons.star_rounded, size: 13, color: Color(0xFFF5B301)),
                         const SizedBox(width: 3),
                         Text(
                           counter.rating.toStringAsFixed(1),
@@ -183,9 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => JobDetailScreen(job: liveJob),
-                ),
+                MaterialPageRoute(builder: (_) => JobDetailScreen(job: liveJob)),
               );
             },
           ),
@@ -206,21 +194,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (_, i) {
                       final msg = messages[messages.length - 1 - i];
                       final isMe = msg.senderId == currentUser.id;
-                      final sender = appState
-                              .getUserById(msg.senderId)
-                              ?.firstName ??
+                      final sender = appState.getUserById(msg.senderId)?.firstName ??
                           (msg.senderId == 'system' ? 'System' : 'Bruker');
-
                       return GestureDetector(
                         onLongPress: () {
-                          if (!msg.isSystem) {
-                            setState(() => _replyTo = msg);
-                          }
+                          if (!msg.isSystem) setState(() => _replyTo = msg);
                         },
                         onTap: () {
-                          if (!msg.isSystem) {
-                            appState.toggleReaction(msg.id, '❤️');
-                          }
+                          if (!msg.isSystem) appState.toggleReaction(msg.id, '❤️');
                         },
                         child: _buildBubble(msg, isMe, sender),
                       );
@@ -245,20 +226,10 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: const [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
           SizedBox(width: 10),
-          Text(
-            'Laster opp bilde…',
-            style: TextStyle(
-              color: _textMuted,
-              fontWeight: FontWeight.w600,
-              fontSize: 12.5,
-            ),
-          ),
+          Text('Laster opp bilde…',
+              style: TextStyle(color: _textMuted, fontWeight: FontWeight.w600, fontSize: 12.5)),
         ],
       ),
     );
@@ -281,11 +252,7 @@ class _ChatScreenState extends State<ChatScreen> {
             alignment: Alignment.center,
             child: Text(
               initials,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ),
           if (online)
@@ -318,11 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -331,26 +294,17 @@ class _ChatScreenState extends State<ChatScreen> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: _primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  'OM OPPDRAGET',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: _primary,
-                    letterSpacing: 1.0,
-                  ),
-                ),
+                child: const Text('OM OPPDRAGET',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _primary, letterSpacing: 1.0)),
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -358,23 +312,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
+                    Container(width: 6, height: 6, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
                     const SizedBox(width: 5),
                     Text(
                       _statusLabel(job.status),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: statusColor,
-                        letterSpacing: 0.2,
-                      ),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: statusColor, letterSpacing: 0.2),
                     ),
                   ],
                 ),
@@ -382,15 +324,11 @@ class _ChatScreenState extends State<ChatScreen> {
               const Spacer(),
               InkResponse(
                 radius: 20,
-                onTap: () =>
-                    setState(() => _summaryExpanded = !_summaryExpanded),
+                onTap: () => setState(() => _summaryExpanded = !_summaryExpanded),
                 child: AnimatedRotation(
                   duration: const Duration(milliseconds: 180),
                   turns: _summaryExpanded ? 0.5 : 0,
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: _textMuted,
-                  ),
+                  child: const Icon(Icons.keyboard_arrow_down_rounded, color: _textMuted),
                 ),
               ),
             ],
@@ -400,49 +338,28 @@ class _ChatScreenState extends State<ChatScreen> {
             job.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w800,
-              color: _textPrimary,
-              letterSpacing: -0.2,
-            ),
+            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: _textPrimary, letterSpacing: -0.2),
           ),
           if (_summaryExpanded) ...[
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.place_outlined,
-                    size: 15, color: _textMuted),
+                const Icon(Icons.place_outlined, size: 15, color: _textMuted),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     job.locationName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: _textMuted,
-                    ),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _textMuted),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _primary,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '$price kr',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(999)),
+                  child: Text('$price kr',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.2)),
                 ),
               ],
             ),
@@ -451,25 +368,14 @@ class _ChatScreenState extends State<ChatScreen> {
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: _primary.withOpacity(0.4)),
                 foregroundColor: _primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => JobDetailScreen(job: job),
-                  ),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job)));
               },
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text(
-                'Gå til oppdrag',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
+              label: const Text('Gå til oppdrag', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
           ],
         ],
@@ -484,16 +390,8 @@ class _ChatScreenState extends State<ChatScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: const Border(
-          left: BorderSide(color: _primary, width: 3),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: const Border(left: BorderSide(color: _primary, width: 3)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Row(
         children: [
@@ -504,24 +402,13 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Svarer på',
-                  style: TextStyle(
-                    color: _primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                const Text('Svarer på', style: TextStyle(color: _primary, fontSize: 11, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 2),
                 Text(
                   _replyTo!.text.isEmpty ? '📎 Bilde' : _replyTo!.text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: _textPrimary, fontWeight: FontWeight.w600, fontSize: 13),
                 ),
               ],
             ),
@@ -529,8 +416,7 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            icon: const Icon(Icons.close_rounded,
-                color: _textMuted, size: 20),
+            icon: const Icon(Icons.close_rounded, color: _textMuted, size: 20),
             onPressed: () => setState(() => _replyTo = null),
           ),
         ],
@@ -551,34 +437,17 @@ class _ChatScreenState extends State<ChatScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 14,
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14)],
               ),
-              child: const Icon(Icons.forum_outlined,
-                  color: _primary, size: 34),
+              child: const Icon(Icons.forum_outlined, color: _primary, size: 34),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Start samtalen',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: _textPrimary,
-              ),
-            ),
+            const Text('Start samtalen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _textPrimary)),
             const SizedBox(height: 4),
             const Text(
               'Skriv en melding for å avtale detaljer om oppdraget.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _textMuted,
-                fontWeight: FontWeight.w600,
-                height: 1.4,
-              ),
+              style: TextStyle(color: _textMuted, fontWeight: FontWeight.w600, height: 1.4),
             ),
           ],
         ),
@@ -598,24 +467,17 @@ class _ChatScreenState extends State<ChatScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFFFFF4E5),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: const Color(0xFFF59E0B).withOpacity(0.3),
-            ),
+            border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.info_outline_rounded,
-                  size: 14, color: Color(0xFFB45309)),
+              const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFB45309)),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   msg.text,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFB45309),
-                  ),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
                 ),
               ),
             ],
@@ -636,95 +498,63 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
             Container(
               width: 28,
               height: 28,
-              decoration: BoxDecoration(
-                color: _primary,
-                borderRadius: BorderRadius.circular(9),
-              ),
+              decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(9)),
               alignment: Alignment.center,
               child: Text(
                 name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12),
               ),
             ),
             const SizedBox(width: 6),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment:
-                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 if (!isMe)
                   Padding(
                     padding: const EdgeInsets.only(left: 8, bottom: 2),
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: _textMuted,
-                      ),
-                    ),
+                    child: Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _textMuted)),
                   ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   constraints: const BoxConstraints(maxWidth: 280),
                   decoration: BoxDecoration(
                     color: isMe ? _primary : Colors.white,
                     borderRadius: borderRadius,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (msg.replyToText != null &&
-                          msg.replyToText!.isNotEmpty)
+                      if (msg.replyToText != null && msg.replyToText!.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.white.withOpacity(0.18)
-                                : _bg,
+                            color: isMe ? Colors.white.withOpacity(0.18) : _bg,
                             borderRadius: BorderRadius.circular(10),
                             border: Border(
-                              left: BorderSide(
-                                color: isMe ? Colors.white70 : _primary,
-                                width: 3,
-                              ),
+                              left: BorderSide(color: isMe ? Colors.white70 : _primary, width: 3),
                             ),
                           ),
                           child: Text(
                             msg.replyToText!,
                             style: TextStyle(
                               fontSize: 12,
-                              color: isMe
-                                  ? Colors.white.withOpacity(0.9)
-                                  : _textMuted,
+                              color: isMe ? Colors.white.withOpacity(0.9) : _textMuted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                      if (msg.imageUrl != null &&
-                          msg.imageUrl!.startsWith('http')) ...[
+                      if (msg.imageUrl != null && msg.imageUrl!.startsWith('http')) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.network(
@@ -732,16 +562,13 @@ class _ChatScreenState extends State<ChatScreen> {
                             height: 160,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                              return Container(
-                                height: 160,
-                                width: double.infinity,
-                                color: _bg,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.broken_image,
-                                    color: _textMuted),
-                              );
-                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              height: 160,
+                              width: double.infinity,
+                              color: _bg,
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.broken_image, color: _textMuted),
+                            ),
                           ),
                         ),
                         if (msg.text.isNotEmpty) const SizedBox(height: 8),
@@ -749,36 +576,23 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (msg.text.isNotEmpty)
                         Text(
                           msg.text,
-                          style: TextStyle(
-                            color: textColor,
-                            fontSize: 14.5,
-                            height: 1.35,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: TextStyle(color: textColor, fontSize: 14.5, height: 1.35, fontWeight: FontWeight.w500),
                         ),
                       const SizedBox(height: 4),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (msg.reaction != null) ...[
-                            Text(
-                              msg.reaction!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
+                            Text(msg.reaction!, style: const TextStyle(fontSize: 13)),
                             const SizedBox(width: 6),
                           ],
-                          Text(
-                            time,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: timeColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          Text(time,
+                              style: TextStyle(fontSize: 10.5, color: timeColor, fontWeight: FontWeight.w600)),
                           if (isMe) ...[
                             const SizedBox(width: 4),
+                            // MVP: én hake = sendt. Ekte lest-status tas i Fase 4.
                             Icon(
-                              Icons.done_all_rounded,
+                              Icons.done_rounded,
                               size: 14,
                               color: Colors.white.withOpacity(0.9),
                             ),
@@ -811,13 +625,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -829,21 +637,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         minLines: 1,
                         maxLines: 5,
                         onSubmitted: (_) => _handleSend(),
-                        style: const TextStyle(
-                          color: _textPrimary,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: const TextStyle(color: _textPrimary, fontWeight: FontWeight.w500),
                         decoration: const InputDecoration(
                           hintText: 'Skriv en melding…',
-                          hintStyle: TextStyle(
-                            color: _textMuted,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          hintStyle: TextStyle(color: _textMuted, fontWeight: FontWeight.w500),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 14,
-                          ),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                         ),
                       ),
                     ),
@@ -852,11 +651,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onTap: _isUploadingImage ? null : _pickFromCamera,
                       child: const Padding(
                         padding: EdgeInsets.fromLTRB(4, 10, 12, 10),
-                        child: Icon(
-                          Icons.camera_alt_outlined,
-                          color: _textMuted,
-                          size: 22,
-                        ),
+                        child: Icon(Icons.camera_alt_outlined, color: _textMuted, size: 22),
                       ),
                     ),
                   ],
@@ -882,19 +677,9 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
         ),
-        child: const Icon(
-          Icons.add_rounded,
-          color: _primary,
-          size: 24,
-        ),
+        child: const Icon(Icons.add_rounded, color: _primary, size: 24),
       ),
     );
   }
@@ -910,12 +695,8 @@ class _ChatScreenState extends State<ChatScreen> {
           width: 46,
           height: 46,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _primary,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: const Icon(Icons.send_rounded,
-              color: Colors.white, size: 20),
+          decoration: BoxDecoration(color: _primary, borderRadius: BorderRadius.circular(22)),
+          child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
         ),
       ),
     );
@@ -925,77 +706,52 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _textMuted.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: _textMuted.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Legg til',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: _textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _attachTile(
-                  icon: Icons.photo_library_outlined,
-                  color: _primary,
-                  title: 'Bilde fra galleri',
-                  subtitle: 'Del et bilde av stedet',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickFromGallery();
-                  },
-                ),
-                _attachTile(
-                  icon: Icons.camera_alt_outlined,
-                  color: _accent,
-                  title: 'Ta et nytt bilde',
-                  subtitle: 'Åpne kamera',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickFromCamera();
-                  },
-                ),
-                _attachTile(
-                  icon: Icons.assignment_outlined,
-                  color: const Color(0xFFF59E0B),
-                  title: 'Gå til oppdrag',
-                  subtitle: 'Åpne detaljer om oppdraget',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => JobDetailScreen(job: widget.job),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Legg til', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _textPrimary)),
+              const SizedBox(height: 14),
+              _attachTile(
+                icon: Icons.photo_library_outlined,
+                color: _primary,
+                title: 'Bilde fra galleri',
+                subtitle: 'Del et bilde av stedet',
+                onTap: () { Navigator.pop(context); _pickFromGallery(); },
+              ),
+              _attachTile(
+                icon: Icons.camera_alt_outlined,
+                color: _accent,
+                title: 'Ta et nytt bilde',
+                subtitle: 'Åpne kamera',
+                onTap: () { Navigator.pop(context); _pickFromCamera(); },
+              ),
+              _attachTile(
+                icon: Icons.assignment_outlined,
+                color: const Color(0xFFF59E0B),
+                title: 'Gå til oppdrag',
+                subtitle: 'Åpne detaljer om oppdraget',
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: widget.job)));
+                },
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -1016,10 +772,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Container(
               width: 42,
               height: 42,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: color, size: 22),
             ),
             const SizedBox(width: 12),
@@ -1028,23 +781,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: _textPrimary,
-                    ),
-                  ),
+                  Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: _textPrimary)),
                   const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: _textMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(subtitle, style: const TextStyle(fontSize: 12.5, color: _textMuted, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -1058,24 +797,18 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _pickFromCamera() async {
     if (_isUploadingImage) return;
     if (kIsWeb) {
-      // image_picker.source.camera støttes ikke på web — fall tilbake til gallery.
       await _pickFromGallery();
       return;
     }
     try {
-      final img = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
+      final img = await _imagePicker.pickImage(source: ImageSource.camera, imageQuality: 85);
       if (img == null) return;
       final bytes = await img.readAsBytes();
       await _uploadAndSend(bytes, img.name);
     } catch (e) {
       debugPrint('camera error: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kunne ikke åpne kamera.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunne ikke åpne kamera.')));
     }
   }
 
@@ -1083,20 +816,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_isUploadingImage) return;
     try {
       if (kIsWeb) {
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.image,
-          withData: true,
-        );
+        final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
         if (result == null || result.files.isEmpty) return;
         final file = result.files.first;
         final bytes = file.bytes;
         if (bytes == null) return;
         await _uploadAndSend(bytes, file.name);
       } else {
-        final img = await _imagePicker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 85,
-        );
+        final img = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 85);
         if (img == null) return;
         final bytes = await img.readAsBytes();
         await _uploadAndSend(bytes, img.name);
@@ -1104,24 +831,17 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       debugPrint('gallery error: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kunne ikke velge bilde.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunne ikke velge bilde.')));
     }
   }
 
   Future<void> _uploadAndSend(Uint8List bytes, String fileName) async {
     setState(() => _isUploadingImage = true);
     try {
-      final url = await _supabase.uploadChatImage(
-        bytes: bytes,
-        originalFileName: fileName,
-      );
+      final url = await _supabase.uploadChatImage(bytes: bytes, originalFileName: fileName);
       if (url == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kunne ikke laste opp bilde.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunne ikke laste opp bilde.')));
         return;
       }
       if (!mounted) return;
@@ -1133,10 +853,7 @@ class _ChatScreenState extends State<ChatScreen> {
             replyToText: _replyTo?.text,
           );
       _ctrl.clear();
-      setState(() {
-        _replyTo = null;
-        _hasText = false;
-      });
+      setState(() { _replyTo = null; _hasText = false; });
     } finally {
       if (mounted) setState(() => _isUploadingImage = false);
     }
@@ -1145,22 +862,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleSend() {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
-
     final replyTo = _replyTo;
-
     context.read<AppState>().sendMessage(
           jobId: widget.job.id,
           text: text,
           replyToMessageId: replyTo?.id,
           replyToText: replyTo?.text,
         );
-
     _ctrl.clear();
-    if (mounted) {
-      setState(() {
-        _replyTo = null;
-        _hasText = false;
-      });
-    }
+    if (mounted) setState(() { _replyTo = null; _hasText = false; });
   }
 }

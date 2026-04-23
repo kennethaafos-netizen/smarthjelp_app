@@ -7,13 +7,23 @@ import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
 import 'job_detail_screen.dart';
+import 'jobs_screen.dart';
 import 'notification_screen.dart';
 import 'onboarding_screen.dart';
 
 class HomeScreen extends StatefulWidget {
+  // Generell navigasjon til bottom-nav-index (0=home, 1=jobs, 2=post, 3=chat, 4=profile).
   final Function(int)? onNavigate;
+  // FASE 3 FIX: klikk på aktiv-oppdrag-banner går direkte til riktig underfane i Oppdrag.
+  // Beholdes separat fra onNavigate for full bakoverkompatibilitet — signaturen på
+  // onNavigate forblir uendret.
+  final Function(JobsTab)? onNavigateToJobsTab;
 
-  const HomeScreen({super.key, this.onNavigate});
+  const HomeScreen({
+    super.key,
+    this.onNavigate,
+    this.onNavigateToJobsTab,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -57,8 +67,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final allJobs = appState.smartRankedJobs;
     final jobs = _applyCategoryFilter(allJobs);
 
-    // FASE 3: liste over inProgress-jobber der current user er deltaker.
-    final activeInProgress = appState.inProgressJobsForCurrentUser;
+    // FASE 3 FIX: aktive oppdrag inkluderer NÅ både reserved og inProgress.
+    // Det gjør at worker ser banneret så snart han har reservert, og owner
+    // ser det så snart jobben er tatt av noen.
+    final activeJobs = appState.activeJobsForCurrentUser;
+    final myId = appState.currentUser.id;
+
+    // Avgjør hvilken Oppdrag-fane klikk på banneret skal åpne:
+    //  - Worker-rollen (ligger i `takenByCurrentUser`) preferes siden
+    //    den er mer handlings-kritisk (må starte, fullføre, etc).
+    //  - Ellers: owner-rollen.
+    final hasTakenRole =
+        activeJobs.any((j) => j.acceptedByUserId == myId);
+    final bannerTargetTab =
+        hasTakenRole ? JobsTab.taken : JobsTab.mine;
 
     _buildMarkers(appState, jobs);
 
@@ -68,8 +90,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _header(context, jobs, appState.hasUnreadNotifications),
-            if (activeInProgress.isNotEmpty)
-              _activeJobsBanner(activeInProgress.length),
+            if (activeJobs.isNotEmpty)
+              _activeJobsBanner(activeJobs.length, bannerTargetTab),
             const SizedBox(height: 8),
             _segmentedToggle(),
             const SizedBox(height: 12),
@@ -181,13 +203,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------------- FASE 3: ACTIVE JOBS BANNER ----------------
 
-  Widget _activeJobsBanner(int count) {
+  Widget _activeJobsBanner(int count, JobsTab targetTab) {
     final title = count == 1
         ? 'Du har 1 aktivt oppdrag'
         : 'Du har $count aktive oppdrag';
-    final subtitle = count == 1
-        ? 'Åpne Oppdrag-fanen for å følge det.'
-        : 'Åpne Oppdrag-fanen for å følge dem.';
+    final subtitleBase = targetTab == JobsTab.taken
+        ? (count == 1 ? 'Åpne «Tatt av meg» for å følge det.'
+                       : 'Åpne «Tatt av meg» for å følge dem.')
+        : (count == 1 ? 'Åpne «Mine» for å følge det.'
+                       : 'Åpne «Mine» for å følge dem.');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
@@ -195,7 +219,17 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => widget.onNavigate?.call(1),
+          onTap: () {
+            // Preferer tab-aware callback. Fallback til generell onNavigate
+            // om ingen tab-callback er satt (f.eks. hvis HomeScreen brukes
+            // utenfor AppShell i en test-kontekst).
+            final cb = widget.onNavigateToJobsTab;
+            if (cb != null) {
+              cb(targetTab);
+            } else {
+              widget.onNavigate?.call(1);
+            }
+          },
           child: Ink(
             decoration: BoxDecoration(
               color: _primary.withOpacity(0.08),
@@ -233,7 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        subtitle,
+                        subtitleBase,
                         style: const TextStyle(
                           color: _textMuted,
                           fontWeight: FontWeight.w600,

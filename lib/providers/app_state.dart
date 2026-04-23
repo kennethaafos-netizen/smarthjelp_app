@@ -275,14 +275,38 @@ class AppState extends ChangeNotifier {
     if (recipientUserId.isEmpty) return;
     final id = _uuid.v4();
     final createdAt = DateTime.now();
-    _supabaseService.insertNotification(
+    final wireType = _notificationTypeToWire(type);
+
+    // FASE 3 FIX: støyende logging. Hvis notifications-inserten feiler
+    // (f.eks. RLS/publication-feil), dumpes feilen i konsollen med nok
+    // kontekst til å diagnostisere uten Supabase-dashboard-tilgang.
+    _supabaseService
+        .insertNotification(
       id: id,
       recipientUserId: recipientUserId,
-      type: _notificationTypeToWire(type),
+      type: wireType,
       text: text,
       jobId: jobId,
       createdAt: createdAt,
-    );
+    )
+        .then((row) {
+      if (row == null) {
+        debugPrint(
+          'SmartHjelp push-notif: insert returnerte null. '
+          'type=$wireType recipient=$recipientUserId jobId=$jobId. '
+          'Sjekk RLS-policy "notif_insert_auth" og at notifications-tabellen finnes.',
+        );
+      } else {
+        debugPrint(
+          'SmartHjelp push-notif OK: type=$wireType recipient=$recipientUserId jobId=$jobId',
+        );
+      }
+    }).catchError((error, stack) {
+      debugPrint(
+        'SmartHjelp push-notif FEILET: type=$wireType recipient=$recipientUserId '
+        'jobId=$jobId error=$error',
+      );
+    });
   }
 
   // ---- JOB LISTS ----
@@ -301,17 +325,27 @@ class AppState extends ChangeNotifier {
       _jobs.where((j) => j.acceptedByUserId == _currentUser.id).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  // FASE 3: inProgress-oppdrag der current user er deltaker.
-  // Brukes av HomeScreen-banneret.
-  List<Job> get inProgressJobsForCurrentUser {
+  // FASE 3 FIX: aktive oppdrag for current user.
+  // Inkluderer BÅDE reserved og inProgress, slik at worker ser banner
+  // så snart han har reservert, og owner ser det så snart noen har tatt jobben.
+  // Completed og open hører ikke hjemme her.
+  List<Job> get activeJobsForCurrentUser {
     if (_currentUser.id.isEmpty) return const [];
     return _jobs.where((j) {
-      if (j.status != JobStatus.inProgress) return false;
+      if (j.status != JobStatus.reserved &&
+          j.status != JobStatus.inProgress) {
+        return false;
+      }
       return j.createdByUserId == _currentUser.id ||
           j.acceptedByUserId == _currentUser.id;
     }).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
+
+  // Bakoverkompatibel alias — beholdt slik at eksisterende kode som
+  // refererer `inProgressJobsForCurrentUser` fortsetter å fungere.
+  // Semantikken er utvidet til også å inkludere reserved-oppdrag.
+  List<Job> get inProgressJobsForCurrentUser => activeJobsForCurrentUser;
 
   // ---- AUTH ----
 
