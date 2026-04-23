@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/job.dart';
+import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import '../screens/image_viewer_screen.dart';
 
@@ -26,8 +27,9 @@ class JobCard extends StatefulWidget {
 }
 
 class _JobCardState extends State<JobCard> {
-  // Lokal UI-state. Favoritter er bevisst IKKE lagret i AppState ennå.
   bool _favorite = false;
+  int _imageIndex = 0;
+  late final PageController _pageCtrl = PageController();
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
@@ -38,18 +40,27 @@ class _JobCardState extends State<JobCard> {
   static const Color _borderSoft = Color(0xFFE4E9F2);
 
   @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final job = widget.job;
 
-    final owner = context.read<AppState>().getUserById(job.createdByUserId);
+    final owner = context.watch<AppState>().getUserById(job.createdByUserId);
     final currentUser = context.watch<AppState>().currentUser;
     final images = context.watch<AppState>().getImages(job.id);
 
-    final previewUrl = images.isNotEmpty
-        ? images.first
-        : (job.imageUrl != null && job.imageUrl!.isNotEmpty
-            ? job.imageUrl
-            : null);
+    final fallbackUrl = (job.imageUrl != null && job.imageUrl!.isNotEmpty)
+        ? job.imageUrl
+        : null;
+
+    final gallery = <String>[
+      ...images,
+      if (images.isEmpty && fallbackUrl != null) fallbackUrl,
+    ];
 
     final isOwner = job.createdByUserId == currentUser.id;
     final isWorker = job.acceptedByUserId == currentUser.id;
@@ -80,10 +91,7 @@ class _JobCardState extends State<JobCard> {
           ),
           child: Column(
             children: [
-              // -------- HEADER (IMAGE ELLER PASTELL) + BADGES --------
-              _header(job, previewUrl, images, radius, isNew),
-
-              // -------- BODY --------
+              _header(job, gallery, radius, isNew),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   16,
@@ -157,11 +165,7 @@ class _JobCardState extends State<JobCard> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          _ownerStrip(
-                            owner?.firstName,
-                            owner?.rating,
-                            owner?.ratingCount,
-                          ),
+                          _ownerStrip(owner),
                           const Spacer(),
                           _ctaButton(isOwner, isWorker),
                         ],
@@ -178,53 +182,24 @@ class _JobCardState extends State<JobCard> {
     );
   }
 
-  // ------------------- HEADER -------------------
+  // ------------------- HEADER + CAROUSEL -------------------
 
-  Widget _header(
-    Job job,
-    String? previewUrl,
-    List<String> images,
-    double radius,
-    bool isNew,
-  ) {
+  Widget _header(Job job, List<String> gallery, double radius, bool isNew) {
     return Stack(
       children: [
-        if (previewUrl != null)
+        if (gallery.isNotEmpty)
           ClipRRect(
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(radius),
-            ),
-            child: GestureDetector(
-              onTap: () {
-                final gallery = images.isNotEmpty ? images : [previewUrl];
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ImageViewerScreen(
-                      imageUrls: gallery,
-                      initialIndex: 0,
-                    ),
-                  ),
-                );
-              },
-              child: Hero(
-                tag: previewUrl,
-                child: Image.network(
-                  previewUrl,
-                  height: 170,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _pastelHeader(job.category, radius),
-                ),
-              ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+            child: SizedBox(
+              height: 170,
+              width: double.infinity,
+              child: _carousel(gallery),
             ),
           )
         else
           _pastelHeader(job.category, radius),
 
-        // Subtil bunngradient for bedre overlay-lesbarhet
-        if (previewUrl != null)
+        if (gallery.isNotEmpty)
           Positioned(
             left: 0,
             right: 0,
@@ -246,7 +221,6 @@ class _JobCardState extends State<JobCard> {
             ),
           ),
 
-        // NY-badge
         if (isNew)
           Positioned(
             left: 12,
@@ -259,15 +233,11 @@ class _JobCardState extends State<JobCard> {
             ),
           ),
 
-        // Pris-badge (prominent, men rolig)
         Positioned(
           right: 12,
           top: 12,
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 7,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
@@ -305,17 +275,44 @@ class _JobCardState extends State<JobCard> {
           ),
         ),
 
-        // Lokasjon-chip nederst venstre
+        // Bilde-teller chip (kun synlig ved flere enn ett bilde)
+        if (gallery.length > 1)
+          Positioned(
+            left: 12,
+            top: 48,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.42),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.photo_library_outlined,
+                      color: Colors.white, size: 12),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${_imageIndex + 1} / ${gallery.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         Positioned(
           left: 12,
           bottom: 12,
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 6,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: previewUrl != null
+              color: gallery.isNotEmpty
                   ? Colors.white
                   : Colors.white.withOpacity(0.92),
               borderRadius: BorderRadius.circular(999),
@@ -330,11 +327,8 @@ class _JobCardState extends State<JobCard> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  color: _textPrimary,
-                  size: 13,
-                ),
+                const Icon(Icons.location_on_outlined,
+                    color: _textPrimary, size: 13),
                 const SizedBox(width: 4),
                 Text(
                   job.locationName,
@@ -349,7 +343,6 @@ class _JobCardState extends State<JobCard> {
           ),
         ),
 
-        // Favoritt-hjerte (lokal state)
         Positioned(
           right: 12,
           bottom: 12,
@@ -374,7 +367,88 @@ class _JobCardState extends State<JobCard> {
             ),
           ),
         ),
+
+        // Dot-indicator nederst midt (kun ved flere bilder)
+        if (gallery.length > 1)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 10,
+            child: IgnorePointer(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(gallery.length, (i) {
+                  final active = i == _imageIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: active ? 16 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  Widget _carousel(List<String> gallery) {
+    if (gallery.length == 1) {
+      final url = gallery.first;
+      return GestureDetector(
+        onTap: () => _openViewer(gallery, 0),
+        child: Hero(
+          tag: url,
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            errorBuilder: (_, __, ___) =>
+                _pastelHeader(widget.job.category, 0),
+          ),
+        ),
+      );
+    }
+
+    return PageView.builder(
+      controller: _pageCtrl,
+      itemCount: gallery.length,
+      onPageChanged: (i) => setState(() => _imageIndex = i),
+      itemBuilder: (_, i) {
+        final url = gallery[i];
+        return GestureDetector(
+          onTap: () => _openViewer(gallery, i),
+          child: Hero(
+            tag: url,
+            child: Image.network(
+              url,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              errorBuilder: (_, __, ___) =>
+                  _pastelHeader(widget.job.category, 0),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openViewer(List<String> gallery, int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageViewerScreen(
+          imageUrls: gallery,
+          initialIndex: index,
+        ),
+      ),
     );
   }
 
@@ -390,7 +464,9 @@ class _JobCardState extends State<JobCard> {
           end: Alignment.bottomRight,
           colors: [palette.start, palette.end],
         ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+        borderRadius: radius > 0
+            ? BorderRadius.vertical(top: Radius.circular(radius))
+            : null,
       ),
       child: Stack(
         children: [
@@ -435,6 +511,8 @@ class _JobCardState extends State<JobCard> {
   Widget _ctaButton(bool isOwner, bool isWorker) {
     final job = widget.job;
     final bool canTake = job.status == JobStatus.open && !isOwner;
+    final bool canCancelReservation =
+        job.status == JobStatus.reserved && isWorker;
 
     if (canTake) {
       return SizedBox(
@@ -455,6 +533,33 @@ class _JobCardState extends State<JobCard> {
           icon: const Icon(Icons.bolt_rounded, size: 16),
           label: const Text(
             'Ta jobb',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (canCancelReservation) {
+      return SizedBox(
+        height: 42,
+        child: OutlinedButton.icon(
+          onPressed: _confirmCancelReservation,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _warning,
+            side: BorderSide(color: _warning.withOpacity(0.55)),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const Size(0, 42),
+          ),
+          icon: const Icon(Icons.cancel_outlined, size: 16),
+          label: const Text(
+            'Avbryt reservasjon',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w800,
@@ -490,9 +595,41 @@ class _JobCardState extends State<JobCard> {
     );
   }
 
-  // ------------------- OWNER -------------------
+  Future<void> _confirmCancelReservation() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Avbryt reservasjon?'),
+        content: const Text(
+          'Oppdraget åpnes igjen for andre, og oppdragsgiver får varsel.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Nei'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _warning),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ja, avbryt'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    if (!mounted) return;
+    await context.read<AppState>().releaseJob(widget.job.id);
+  }
 
-  Widget _ownerStrip(String? name, double? rating, int? ratingCount) {
+  // ------------------- OWNER STRIP (navn + rating + verified) -------------------
+
+  Widget _ownerStrip(UserProfile? owner) {
+    final name = owner?.firstName;
+    final rating = owner?.rating;
+    final ratingCount = owner?.ratingCount;
+    final isVerified = owner?.isVerified ?? false;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -518,14 +655,27 @@ class _JobCardState extends State<JobCard> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              name ?? 'Bruker',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                color: _textPrimary,
-                fontSize: 13,
-                letterSpacing: -0.1,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name ?? 'Bruker',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _textPrimary,
+                    fontSize: 13,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                if (isVerified) ...[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.verified_rounded,
+                    color: _primary,
+                    size: 14,
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 1),
             Row(

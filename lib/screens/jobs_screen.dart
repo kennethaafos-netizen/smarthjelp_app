@@ -17,8 +17,6 @@ enum JobSortOption {
 
 enum _JobsTab { all, mine, taken }
 
-// Public filter mode used when JobsScreen is opened as a focused list
-// (e.g. from Profile "Live status" rows).
 enum JobsFilter {
   all,
   takenActive,
@@ -80,7 +78,6 @@ class _JobsScreenState extends State<JobsScreen> {
     return _buildTabbedView(context);
   }
 
-  // ---------- FILTERED VIEW (opened from Profile etc.) ----------
   Widget _buildFilteredView(BuildContext context) {
     final appState = context.watch<AppState>();
     final currentUser = appState.currentUser;
@@ -154,13 +151,17 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
-  // ---------- DEFAULT TABBED VIEW ----------
   Widget _buildTabbedView(BuildContext context) {
     final appState = context.watch<AppState>();
     final currentUser = appState.currentUser;
 
+    // FASE 2 PATCH: «Alle oppdrag»-fanen skal kun vise ÅPNE oppdrag.
+    // Reservert/pågående/fullført hører hjemme under «Mine» / «Tatt»,
+    // ikke i offentlig feed. Involverte brukere ser sine aktive jobber
+    // fortsatt under sin egen fane.
     final all = _sortedJobs(
       appState.allJobsSortedByNewest.where((job) {
+        if (job.status != JobStatus.open) return false;
         if (_showOnlyOpen && job.status != JobStatus.open) return false;
         return true;
       }).toList(),
@@ -174,7 +175,7 @@ class _JobsScreenState extends State<JobsScreen> {
     switch (_activeTab) {
       case _JobsTab.all:
         visibleJobs = all;
-        emptyText = 'Ingen oppdrag matcher filtreringen akkurat nå.';
+        emptyText = 'Ingen åpne oppdrag akkurat nå.';
         break;
       case _JobsTab.mine:
         visibleJobs = mine;
@@ -266,10 +267,10 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
-  // ---------- FILTER HELPERS ----------
   List<Job> _jobsForFilter(AppState appState, JobsFilter filter) {
     switch (filter) {
       case JobsFilter.all:
+        // Fokusert visning fra f.eks. Profil: viser full liste.
         return appState.allJobsSortedByNewest;
       case JobsFilter.takenActive:
         return appState.activeTakenJobs;
@@ -372,22 +373,21 @@ class _JobsScreenState extends State<JobsScreen> {
                     color: _textMuted,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w500,
-                    height: 1.3,
                   ),
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: _primary.withOpacity(0.12),
+              color: _primary,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               '$count',
               style: const TextStyle(
-                color: _primary,
+                color: Colors.white,
                 fontWeight: FontWeight.w800,
                 fontSize: 12.5,
               ),
@@ -398,7 +398,6 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
-  // ---------- JOB LIST ----------
   List<Widget> _buildJobList(
     BuildContext context,
     List<Job> jobs,
@@ -522,14 +521,12 @@ class _JobsScreenState extends State<JobsScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () async {
-                await context.read<AppState>().releaseJob(job.id);
-              },
+              onPressed: () => _confirmReleaseReservation(context, job),
               icon: const Icon(Icons.close_rounded, size: 18),
-              label: const Text('Slipp'),
+              label: const Text('Avbryt reservasjon'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFDC2626),
-                side: const BorderSide(color: Color(0x55DC2626)),
+                foregroundColor: const Color(0xFFE08A00),
+                side: const BorderSide(color: Color(0x66E08A00)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -595,6 +592,37 @@ class _JobsScreenState extends State<JobsScreen> {
     }
 
     return const SizedBox.shrink();
+  }
+
+  Future<void> _confirmReleaseReservation(
+    BuildContext context,
+    Job job,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Avbryt reservasjon?'),
+        content: const Text(
+          'Oppdraget åpnes igjen for andre, og oppdragsgiver får varsel.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Nei'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE08A00),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ja, avbryt'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !context.mounted) return;
+    await context.read<AppState>().releaseJob(job.id);
   }
 
   Future<void> _takeJob(BuildContext context, Job job) async {

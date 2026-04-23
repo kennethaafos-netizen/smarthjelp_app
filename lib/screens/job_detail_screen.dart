@@ -30,6 +30,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppState>().loadImages(widget.job.id);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final job = appState.getJobById(widget.job.id) ?? widget.job;
@@ -83,10 +91,36 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       _reload(job.id);
                     }),
                   ),
+
+                if (job.status == JobStatus.inProgress &&
+                    job.isCompletedByWorker &&
+                    !job.isApprovedByOwner &&
+                    (isOwner || isWorker))
+                  _ApprovalBanner(
+                    isOwner: isOwner,
+                    onApprove: () => _runAction(() async {
+                      await appState.approveAndReleasePayment(job.id);
+                      _reload(job.id);
+                    }),
+                  ),
+
+                if (job.status == JobStatus.inProgress &&
+                    !job.isCompletedByWorker &&
+                    (isOwner || isWorker))
+                  _PrivacyBanner(
+                    title: 'Oppdraget pågår',
+                    message: isOwner
+                        ? 'Oppdragstaker jobber med oppdraget nå. Kun dere to ser oppdraget inntil det er fullført.'
+                        : 'Du er i gang. Husk å trykke «Fullfør» når jobben er ferdig — da må oppdragsgiver godkjenne for utbetaling.',
+                  ),
+
                 if (images.isNotEmpty) _heroGallery(images),
                 const SizedBox(height: 16),
                 _titleCard(job),
                 const SizedBox(height: 14),
+
+                _trustCard(appState, job, isOwner, isWorker),
+
                 _descriptionCard(job),
                 const SizedBox(height: 14),
                 _paymentCard(job, isOwner, isWorker),
@@ -198,8 +232,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ),
               const SizedBox(width: 10),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: _bg,
                   borderRadius: BorderRadius.circular(10),
@@ -273,6 +307,159 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
+  // FASE 2 PATCH: trust-kort viser nå faktisk antall fullførte oppdrag
+  // beregnet fra _jobs, pluss verified-flagg.
+  Widget _trustCard(
+    AppState appState,
+    Job job,
+    bool isOwner,
+    bool isWorker,
+  ) {
+    String? otherId;
+    String label;
+
+    if (isOwner && job.acceptedByUserId != null) {
+      otherId = job.acceptedByUserId;
+      label = 'Oppdragstaker';
+    } else if (isWorker) {
+      otherId = job.createdByUserId;
+      label = 'Oppdragsgiver';
+    } else {
+      otherId = job.createdByUserId;
+      label = 'Oppdragsgiver';
+    }
+
+    if (otherId == null || otherId.isEmpty) return const SizedBox.shrink();
+    final other = appState.getUserById(otherId);
+    if (other == null) {
+      return const SizedBox(height: 14);
+    }
+
+    final completedCount = appState.completedJobCountForUser(otherId);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _card(
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: _primary,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                other.firstName.isNotEmpty
+                    ? other.firstName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _textMuted,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          other.firstName.isEmpty ? 'Bruker' : other.firstName,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                      if (other.isVerified) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.verified_rounded,
+                          color: _primary,
+                          size: 16,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded,
+                          size: 14, color: Color(0xFFFFB020)),
+                      const SizedBox(width: 2),
+                      Text(
+                        other.rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                          color: _textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.task_alt_rounded,
+                          size: 13, color: _accent),
+                      const SizedBox(width: 3),
+                      Text(
+                        completedCount == 1
+                            ? '1 fullført oppdrag'
+                            : '$completedCount fullførte oppdrag',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: _textPrimary,
+                        ),
+                      ),
+                      if (other.isVerified) ...[
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _primary.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Verifisert',
+                            style: TextStyle(
+                              color: _primary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10.5,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _descriptionCard(Job job) {
     return _card(
       child: Column(
@@ -323,30 +510,64 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           ),
           const SizedBox(height: 14),
           _safetyNote(
-            icon: Icons.lock_rounded,
+            icon: job.isPaidOut ? Icons.check_circle_outline_rounded : Icons.lock_rounded,
             color: _safeGreen,
-            text:
-                'Beløpet holdes trygt av SmartHjelp og utbetales først når du godkjenner fullført jobb.',
+            text: job.isPaidOut
+                ? 'Utbetalingen er gjennomført. Takk for at du brukte SmartHjelp.'
+                : 'Beløpet holdes trygt av SmartHjelp og utbetales først når du godkjenner fullført jobb.',
           ),
         ],
       ),
     );
   }
 
+  // FASE 2 PATCH: worker-utbetalingskort er nå tilstandsbevisst.
   Widget _paymentCardWorker(Job job) {
-    final reserved = job.isPaymentReserved;
+    IconData icon;
+    Color color;
+    String text;
+
+    if (job.status == JobStatus.completed && job.isPaidOut) {
+      icon = Icons.check_circle_outline_rounded;
+      color = _safeGreen;
+      text =
+          'Utbetalingen er gjennomført. Beløpet er frigitt til deg.';
+    } else if (job.status == JobStatus.inProgress &&
+        job.isCompletedByWorker) {
+      icon = Icons.hourglass_top_rounded;
+      color = _primary;
+      text =
+          'Du har markert jobben som fullført. Venter på at oppdragsgiver godkjenner for utbetaling.';
+    } else if (job.status == JobStatus.inProgress) {
+      icon = Icons.lock_rounded;
+      color = _safeGreen;
+      text =
+          'Oppdraget er i gang. Beløpet er reservert av oppdragsgiver og utbetales etter at du har fullført og fått godkjenning.';
+    } else if (job.status == JobStatus.reserved) {
+      icon = Icons.bookmark_added_outlined;
+      color = _warning;
+      text =
+          'Oppdraget er reservert til deg. Beløpet reserveres når du starter jobben. Utbetaling skjer etter godkjent fullføring.';
+    } else {
+      icon = Icons.hourglass_empty_rounded;
+      color = _warning;
+      text =
+          'Beløpet reserveres når du starter jobben. Utbetaling skjer etter godkjent fullføring.';
+    }
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _cardHeading('Din utbetaling', Icons.account_balance_wallet_outlined),
+          _cardHeading(
+              'Din utbetaling', Icons.account_balance_wallet_outlined),
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: _accent.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -362,9 +583,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Du får utbetalt',
-                      style: TextStyle(
+                    Text(
+                      job.isPaidOut ? 'Utbetalt' : 'Du får utbetalt',
+                      style: const TextStyle(
                         color: _textMuted,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -386,13 +607,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          _safetyNote(
-            icon: reserved ? Icons.lock_rounded : Icons.hourglass_empty_rounded,
-            color: reserved ? _safeGreen : _warning,
-            text: reserved
-                ? 'Beløpet er reservert av oppdragsgiver. Utbetaling skjer etter at du har fullført og oppdragsgiver har godkjent.'
-                : 'Beløpet reserveres når du starter jobben. Utbetaling skjer etter godkjent fullføring.',
-          ),
+          _safetyNote(icon: icon, color: color, text: text),
         ],
       ),
     );
@@ -482,8 +697,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         children: [
           _cardHeading('Info', Icons.info_outline_rounded),
           const SizedBox(height: 12),
-          _infoRow(Icons.visibility_outlined, 'Visninger',
-              '${job.viewCount}'),
+          _infoRow(Icons.visibility_outlined, 'Visninger', '${job.viewCount}'),
           const SizedBox(height: 8),
           _infoRow(Icons.tag_outlined, 'Kategori', job.category),
         ],
@@ -599,26 +813,32 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       ));
     }
 
-    if (!_isLoading &&
-        (isOwner || isWorker) &&
-        job.status != JobStatus.completed &&
-        job.status != JobStatus.open) {
+    if (!_isLoading && job.status == JobStatus.reserved && isWorker) {
+      children.add(_primaryButton(
+        'Start jobb',
+        Icons.play_arrow_rounded,
+        () async {
+          await _runAction(() async {
+            await appState.startJob(job.id);
+            _reload(job.id);
+          });
+        },
+      ));
       children.add(_outlinedButton(
-        'Avbryt oppdrag',
+        'Avbryt reservasjon',
         Icons.cancel_outlined,
-        () => _confirmCancel(job.id),
-        isDanger: true,
+        () => _confirmCancel(job.id, label: 'Avbryt reservasjon?'),
+        color: _warning,
       ));
     }
 
-    if (!_isLoading && job.status == JobStatus.reserved && isWorker) {
-      children.add(_primaryButton('Start jobb',
-          Icons.play_arrow_rounded, () async {
-        await _runAction(() async {
-          await appState.startJob(job.id);
-          _reload(job.id);
-        });
-      }));
+    if (!_isLoading && job.status == JobStatus.reserved && isOwner) {
+      children.add(_outlinedButton(
+        'Avbryt reservasjon',
+        Icons.cancel_outlined,
+        () => _confirmCancel(job.id, label: 'Avbryt reservasjon?'),
+        color: _warning,
+      ));
     }
 
     if (!_isLoading &&
@@ -646,6 +866,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             _reload(job.id);
           });
         },
+      ));
+    }
+
+    if (!_isLoading &&
+        (isOwner || isWorker) &&
+        job.status == JobStatus.inProgress) {
+      children.add(_outlinedButton(
+        'Avbryt oppdrag',
+        Icons.cancel_outlined,
+        () => _confirmCancel(job.id, label: 'Avbryt oppdrag?'),
+        isDanger: true,
       ));
     }
 
@@ -729,9 +960,14 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  Widget _outlinedButton(String text, IconData icon, VoidCallback onTap,
-      {bool isDanger = false}) {
-    final color = isDanger ? _danger : _primary;
+  Widget _outlinedButton(
+    String text,
+    IconData icon,
+    VoidCallback onTap, {
+    bool isDanger = false,
+    Color? color,
+  }) {
+    final resolved = color ?? (isDanger ? _danger : _primary);
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
@@ -739,8 +975,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         icon: Icon(icon, size: 18),
         label: Text(text),
         style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color.withOpacity(0.35)),
+          foregroundColor: resolved,
+          side: BorderSide(color: resolved.withOpacity(0.35)),
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -754,7 +990,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  Future<void> _confirmCancel(String jobId) async {
+  Future<void> _confirmCancel(String jobId, {String label = 'Avbryt oppdrag?'}) async {
     final appState = context.read<AppState>();
 
     final confirm = await showDialog<bool>(
@@ -763,7 +999,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        title: const Text('Avbryt oppdrag'),
+        title: Text(label),
         content: const Text('Er du sikker på at du vil avbryte?'),
         actions: [
           TextButton(
@@ -846,6 +1082,171 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         ),
       );
     }
+  }
+}
+
+class _ApprovalBanner extends StatelessWidget {
+  final bool isOwner;
+  final VoidCallback onApprove;
+
+  const _ApprovalBanner({
+    required this.isOwner,
+    required this.onApprove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = isOwner
+        ? 'Oppdragstaker har meldt fra om fullført jobb'
+        : 'Venter på godkjenning fra oppdragsgiver';
+    final subtitle = isOwner
+        ? 'Godkjenn for at utbetaling skal frigis til oppdragstakeren.'
+        : 'Du har markert jobben som fullført. Oppdragsgiver må godkjenne før beløpet utbetales.';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _primary.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _primary.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _primary.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.verified_outlined,
+                    color: _primary, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: _primary,
+                        fontSize: 14,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: _textPrimary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (isOwner) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onApprove,
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Godkjenn og betal ut'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PrivacyBanner extends StatelessWidget {
+  final String title;
+  final String message;
+
+  const _PrivacyBanner({
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _accent.withOpacity(0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _accent.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(Icons.shield_outlined,
+                color: _accent, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _accent,
+                    fontSize: 13.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: _textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -971,7 +1372,8 @@ class _CancelBanner extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(13),
                       ),
-                      textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                      textStyle:
+                          const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),

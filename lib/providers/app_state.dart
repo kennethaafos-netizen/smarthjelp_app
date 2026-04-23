@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -74,9 +75,7 @@ class AppNotification {
     required this.isRead,
   });
 
-  AppNotification copyWith({
-    bool? isRead,
-  }) {
+  AppNotification copyWith({bool? isRead}) {
     return AppNotification(
       id: id,
       recipientUserId: recipientUserId,
@@ -188,7 +187,8 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _notificationsChannel;
   RealtimeChannel? _profilesChannel;
 
-  // V2 FOUNDATION (distance + deterministic offset + preferences)
+  Timer? _notifReloadTimer;
+
   static const double _markerSpread = 0.006;
   double _userLat = 59.14;
   double _userLng = 9.65;
@@ -220,6 +220,16 @@ class AppState extends ChangeNotifier {
       .length;
 
   bool get hasUnreadNotifications => unreadNotificationCount > 0;
+
+  // FASE 3: chat-spesifikke uleste tellere for badge i bottom-nav.
+  int get unreadChatNotificationCount => _notifications
+      .where((n) =>
+          n.recipientUserId == _currentUser.id &&
+          !n.isRead &&
+          n.type == AppNotificationType.message)
+      .length;
+
+  bool get hasUnreadChat => unreadChatNotificationCount > 0;
 
   void markNotificationRead(String id) {
     final index = _notifications.indexWhere((n) => n.id == id);
@@ -256,9 +266,6 @@ class AppState extends ChangeNotifier {
 
   void clearAllNotifications() => clearNotifications();
 
-  /// Fire-and-forget insert av notifikasjon. Lokale kopier legges
-  /// også inn (for actor), men filtreres ut av `notifications`-
-  /// getteren siden den bare viser `recipientUserId == currentUser.id`.
   void _pushNotification({
     required String recipientUserId,
     required AppNotificationType type,
@@ -268,7 +275,6 @@ class AppState extends ChangeNotifier {
     if (recipientUserId.isEmpty) return;
     final id = _uuid.v4();
     final createdAt = DateTime.now();
-
     _supabaseService.insertNotification(
       id: id,
       recipientUserId: recipientUserId,
@@ -277,8 +283,6 @@ class AppState extends ChangeNotifier {
       jobId: jobId,
       createdAt: createdAt,
     );
-    // Mottakerens klient får raden via realtime. Vi legger den ikke
-    // inn lokalt her, siden avsender likevel ikke skal se varselet.
   }
 
   // ---- JOB LISTS ----
@@ -297,6 +301,18 @@ class AppState extends ChangeNotifier {
       _jobs.where((j) => j.acceptedByUserId == _currentUser.id).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+  // FASE 3: inProgress-oppdrag der current user er deltaker.
+  // Brukes av HomeScreen-banneret.
+  List<Job> get inProgressJobsForCurrentUser {
+    if (_currentUser.id.isEmpty) return const [];
+    return _jobs.where((j) {
+      if (j.status != JobStatus.inProgress) return false;
+      return j.createdByUserId == _currentUser.id ||
+          j.acceptedByUserId == _currentUser.id;
+    }).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
   // ---- AUTH ----
 
   Future<void> _bootstrap() async {
@@ -313,7 +329,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     final user = _client.auth.currentUser;
-
     if (user == null) {
       _currentUser = _guestProfile();
       _isAuthenticated = false;
@@ -397,6 +412,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _notifReloadTimer?.cancel();
+    _notifReloadTimer = null;
     await _teardownAllRealtime();
     try {
       await _client.auth.signOut();
@@ -470,12 +487,14 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Hent egen profil fra profiles-tabellen. Hvis den ikke finnes ennå,
-  /// upsert fra auth-metadata.
   Future<void> _hydrateOwnProfile() async {
     if (!_isAuthenticated || _currentUser.id.isEmpty) return;
     final existing = await _supabaseService.fetchProfile(_currentUser.id);
+
+    final authVerified = _client.auth.currentUser?.emailConfirmedAt != null;
+
     if (existing != null) {
+      final effectiveVerified = existing.isVerified || authVerified;
       _currentUser = _currentUser.copyWith(
         firstName: existing.firstName.isEmpty
             ? _currentUser.firstName
@@ -485,10 +504,14 @@ class AppState extends ChangeNotifier {
         preferredArea: existing.preferredArea,
         rating: existing.rating,
         ratingCount: existing.ratingCount,
-        isVerified: existing.isVerified,
+        isVerified: effectiveVerified,
       );
       _users[_currentUser.id] = _currentUser;
       notifyListeners();
+
+      if (authVerified && !existing.isVerified) {
+        await _supabaseService.upsertProfile(_currentUser);
+      }
     } else {
       await _supabaseService.upsertProfile(_currentUser);
     }
@@ -542,6 +565,7 @@ class AppState extends ChangeNotifier {
       _setupNotificationsSubscription();
       _setupProfilesSubscription();
       _hydrateProfilesForLoadedJobs();
+      _hydrateImagesForLoadedJobs();
     }
   }
 
@@ -568,6 +592,7 @@ class AppState extends ChangeNotifier {
       _setupNotificationsSubscription();
       _setupProfilesSubscription();
       _hydrateProfilesForLoadedJobs();
+      _hydrateImagesForLoadedJobs();
     }
   }
 
@@ -596,9 +621,18 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  int completedJobCountForUser(String userId) {
+    if (userId.isEmpty) return 0;
+    return _jobs.where((j) {
+      final done = j.status == JobStatus.completed && j.isApprovedByOwner;
+      if (!done) return false;
+      return j.createdByUserId == userId || j.acceptedByUserId == userId;
+    }).length;
+  }
+
   List<Job> get smartRankedJobs {
     final result = _jobs.where((j) {
-      if (j.status == JobStatus.completed) return false;
+      if (j.status != JobStatus.open) return false;
       if (j.createdByUserId == _currentUser.id) return false;
       return true;
     }).toList()
@@ -712,9 +746,6 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  // ==================================================================
-  // addJob — SERVER-FIRST
-  // ==================================================================
   Future<bool> addJob({
     required String title,
     required String description,
@@ -1179,12 +1210,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==================================================================
-  // CHAT
-  // ==================================================================
-
-  /// Kalles av ChatScreen før første bygging. Henter historikk én gang
-  /// per jobId; realtime tar over for nye meldinger.
   Future<void> loadMessagesForJob(String jobId) async {
     if (jobId.isEmpty) return;
     if (_loadedMessageJobIds.contains(jobId)) return;
@@ -1219,12 +1244,9 @@ class AppState extends ChangeNotifier {
       imageUrl: imageUrl,
     );
 
-    // Optimistisk lokal innsetting for snappy UX; realtime-echo
-    // fra Supabase dedupliseres via id i _mergeMessage.
     _mergeMessage(msg);
     notifyListeners();
 
-    // Persister. Ved feil: fjern lokalt slik at UI ikke lyver.
     _supabaseService.insertMessage(msg).then((saved) {
       _mergeMessage(saved);
       notifyListeners();
@@ -1234,7 +1256,6 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Varsle motpart.
     final job = getJobById(jobId);
     if (job != null) {
       final otherParty = job.createdByUserId == _currentUser.id
@@ -1343,16 +1364,12 @@ class AppState extends ChangeNotifier {
     _users[userId] = updated;
     notifyListeners();
 
-    // Persister kun hvis det er din egen profil (RLS blokkerer ellers).
     if (userId == _currentUser.id) {
       _currentUser = updated;
       _supabaseService.upsertProfile(updated);
     }
   }
 
-  // ==================================================================
-  // _saveJobUpdate — SERVER-FIRST
-  // ==================================================================
   Future<bool> _saveJobUpdate(
     Job updated, {
     String? systemMessage,
@@ -1406,7 +1423,6 @@ class AppState extends ChangeNotifier {
     _hydrateProfilesForJob(updated);
   }
 
-  /// System-melding persisteres til chat_messages med sender_id = NULL.
   void _addSystemMessage({required String jobId, required String text}) {
     final msg = ChatMessage(
       id: _uuid.v4(),
@@ -1432,10 +1448,6 @@ class AppState extends ChangeNotifier {
       _messages[idx] = msg;
     }
   }
-
-  // ==================================================================
-  // PROFILES — cache + on-demand hydrering
-  // ==================================================================
 
   void _ensureProfileLoaded(String id) {
     if (_profilesRequested.contains(id)) return;
@@ -1472,9 +1484,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==================================================================
-  // NOTIFICATIONS — initial load
-  // ==================================================================
+  Future<void> _hydrateImagesForLoadedJobs() async {
+    final jobIds = _jobs
+        .map((j) => j.id)
+        .where((id) {
+          final existing = _jobImages[id];
+          return existing == null || existing.isEmpty;
+        })
+        .toList();
+    if (jobIds.isEmpty) return;
+
+    await Future.wait(jobIds.map((id) async {
+      try {
+        final remote = await _supabaseService.fetchJobImages(id);
+        if (remote.isNotEmpty) {
+          _jobImages[id] = remote;
+        } else {
+          final job = getJobById(id);
+          final fallback = job?.imageUrl;
+          if (fallback != null && fallback.isNotEmpty) {
+            _jobImages[id] = [fallback];
+          }
+        }
+      } catch (e) {
+        debugPrint('hydrate images error for $id: $e');
+      }
+    }));
+    notifyListeners();
+  }
 
   Future<void> _loadNotifications() async {
     if (_currentUser.id.isEmpty) return;
@@ -1486,9 +1523,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==================================================================
-  // REALTIME — jobs, chat_messages, notifications, profiles
-  // ==================================================================
+  void _scheduleNotificationsReload() {
+    if (_currentUser.id.isEmpty) return;
+    _notifReloadTimer?.cancel();
+    _notifReloadTimer = Timer(const Duration(milliseconds: 600), () {
+      _loadNotifications();
+    });
+  }
 
   void _setupJobsSubscription() {
     if (_jobsChannel != null) return;
@@ -1524,6 +1565,12 @@ class AppState extends ChangeNotifier {
       final job = Job.fromSupabase(Map<String, dynamic>.from(row));
       _replaceJobLocally(job);
       notifyListeners();
+
+      final involvesMe = job.createdByUserId == _currentUser.id ||
+          job.acceptedByUserId == _currentUser.id;
+      if (involvesMe) {
+        _scheduleNotificationsReload();
+      }
     } catch (e) {
       debugPrint('realtime job upsert error: $e');
     }
@@ -1601,7 +1648,7 @@ class AppState extends ChangeNotifier {
     if (row.isEmpty) return;
     try {
       final n = AppNotification.fromSupabase(Map<String, dynamic>.from(row));
-      if (n.recipientUserId != _currentUser.id) return; // safety
+      if (n.recipientUserId != _currentUser.id) return;
       final idx = _notifications.indexWhere((x) => x.id == n.id);
       if (idx == -1) {
         _notifications.add(n);
@@ -1640,6 +1687,8 @@ class AppState extends ChangeNotifier {
       if (p.id.isEmpty) return;
       _users[p.id] = p;
       if (p.id == _currentUser.id) {
+        final authVerified =
+            _client.auth.currentUser?.emailConfirmedAt != null;
         _currentUser = _currentUser.copyWith(
           firstName: p.firstName,
           phone: p.phone,
@@ -1647,7 +1696,7 @@ class AppState extends ChangeNotifier {
           preferredArea: p.preferredArea,
           rating: p.rating,
           ratingCount: p.ratingCount,
-          isVerified: p.isVerified,
+          isVerified: p.isVerified || authVerified,
         );
       }
       notifyListeners();
@@ -1679,13 +1728,11 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifReloadTimer?.cancel();
+    _notifReloadTimer = null;
     _teardownAllRealtime();
     super.dispose();
   }
-
-  // ==================================================================
-  // LEGACY / SEED — beholdt for kompatibilitet
-  // ==================================================================
 
   static const String _seedOwnerId = '00000000-0000-0000-0000-000000000001';
   static const String _seedWorkerId = '00000000-0000-0000-0000-000000000002';
@@ -1693,7 +1740,6 @@ class AppState extends ChangeNotifier {
 
   void _seedUsers() {
     final now = DateTime.now();
-
     final owner = UserProfile(
       id: _seedOwnerId,
       firstName: 'Anders',
@@ -1707,7 +1753,6 @@ class AppState extends ChangeNotifier {
       createdAt: now,
       isVerified: false,
     );
-
     final worker = UserProfile(
       id: _seedWorkerId,
       firstName: 'Kenneth',
@@ -1721,7 +1766,6 @@ class AppState extends ChangeNotifier {
       createdAt: now,
       isVerified: false,
     );
-
     _users[owner.id] = owner;
     _users[worker.id] = worker;
   }
@@ -1744,10 +1788,6 @@ class AppState extends ChangeNotifier {
       ),
     ];
   }
-
-  // ============================================================
-  // V2 FOUNDATION ADDITIONS
-  // ============================================================
 
   double get userLat => _userLat;
   double get userLng => _userLng;

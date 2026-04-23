@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/app_state.dart';
 import '../screens/chat_list_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/jobs_screen.dart';
@@ -39,6 +41,10 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // FASE 3: bottom-nav lytter på AppState for å få live badge-oppdatering
+    // på chat-knappen. Provider i main.dart gir oss tilgangen.
+    final chatBadge = context.watch<AppState>().unreadChatNotificationCount;
+
     return Scaffold(
       extendBody: true,
       body: _buildScreen(),
@@ -86,6 +92,7 @@ class _AppShellState extends State<AppShell> {
                     label: 'Chat',
                     isActive: _index == 3,
                     onTap: () => _onNavigate(3),
+                    badgeCount: chatBadge,
                   ),
                   _NavItem(
                     icon: Icons.person_outline_rounded,
@@ -150,12 +157,16 @@ class _NavItem extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
+  // FASE 3: badgeCount > 0 tegner rød badge over ikonet.
+  final int badgeCount;
+
   const _NavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
     required this.isActive,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   @override
@@ -172,10 +183,44 @@ class _NavItem extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isActive ? activeIcon : icon,
-              color: color,
-              size: 22,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  isActive ? activeIcon : icon,
+                  color: color,
+                  size: 22,
+                ),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -8,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDC2626),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badgeCount > 9 ? '9+' : '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(

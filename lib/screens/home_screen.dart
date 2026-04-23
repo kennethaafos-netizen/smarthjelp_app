@@ -25,8 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  // Lokal kategori-filter state (ikke lagret i AppState)
-  String? _selectedCategory; // null = Alle
+  String? _selectedCategory;
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
@@ -58,6 +57,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final allJobs = appState.smartRankedJobs;
     final jobs = _applyCategoryFilter(allJobs);
 
+    // FASE 3: liste over inProgress-jobber der current user er deltaker.
+    final activeInProgress = appState.inProgressJobsForCurrentUser;
+
     _buildMarkers(appState, jobs);
 
     return Scaffold(
@@ -66,18 +68,18 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _header(context, jobs, appState.hasUnreadNotifications),
+            if (activeInProgress.isNotEmpty)
+              _activeJobsBanner(activeInProgress.length),
             const SizedBox(height: 8),
             _segmentedToggle(),
             const SizedBox(height: 12),
             _categoryChipsRow(),
             const SizedBox(height: 12),
 
-            // KART / LISTE
             Expanded(
               child: _showMap ? _mapView(jobs) : _listView(jobs),
             ),
 
-            // FLYTENDE PREVIEW-KORT
             if (_selectedJob != null)
               SafeArea(
                 top: false,
@@ -172,6 +174,80 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------- FASE 3: ACTIVE JOBS BANNER ----------------
+
+  Widget _activeJobsBanner(int count) {
+    final title = count == 1
+        ? 'Du har 1 aktivt oppdrag'
+        : 'Du har $count aktive oppdrag';
+    final subtitle = count == 1
+        ? 'Åpne Oppdrag-fanen for å følge det.'
+        : 'Åpne Oppdrag-fanen for å følge dem.';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => widget.onNavigate?.call(1),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: _primary.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _primary.withOpacity(0.24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _primary.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.bolt_rounded,
+                      color: _primary, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: _textMuted,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: _primary),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -724,5 +800,6 @@ class _HomeScreenState extends State<HomeScreen> {
 class _CategoryOption {
   final String label;
   final IconData icon;
+
   const _CategoryOption(this.label, this.icon);
 }
