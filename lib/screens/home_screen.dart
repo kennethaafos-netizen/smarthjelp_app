@@ -6,10 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../widgets/job_card.dart';
+import 'contact_screen.dart';
+import 'faq_screen.dart';
 import 'job_detail_screen.dart';
 import 'jobs_screen.dart';
 import 'notification_screen.dart';
 import 'onboarding_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   // Generell navigasjon til bottom-nav-index (0=home, 1=jobs, 2=post, 3=chat, 4=profile).
@@ -683,13 +686,18 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.onNavigate?.call(4);
         break;
       case 'settings':
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+        );
+        break;
       case 'contact':
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ContactScreen()),
+        );
+        break;
       case 'faq':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Kommer snart'),
-            duration: Duration(seconds: 2),
-          ),
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const FaqScreen()),
         );
         break;
       case 'logout':
