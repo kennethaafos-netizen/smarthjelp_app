@@ -64,6 +64,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             fontSize: 18,
           ),
         ),
+        actions: [
+          // FASE 3 FIX: snarvei tilbake til Hjem (popper hele navigator-stacken
+          // tilbake til AppShell-rot, uavhengig av om man kom via Chat, Jobs, etc).
+          IconButton(
+            tooltip: 'Til Hjem',
+            icon: const Icon(Icons.home_rounded, color: _primary),
+            onPressed: () {
+              Navigator.of(context).popUntil((r) => r.isFirst);
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Column(
         children: [
@@ -1396,7 +1408,7 @@ class _CancelBanner extends StatelessWidget {
                 ),
               ],
             ),
-        ],
+          ],
       ),
     );
   }

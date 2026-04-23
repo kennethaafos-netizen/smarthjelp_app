@@ -358,21 +358,30 @@ class SupabaseService {
   }) async {
     if (recipientUserId.isEmpty) return null;
     try {
-      final response = await _client
-          .from('notifications')
-          .insert({
-            'id': id,
-            'recipient_user_id': recipientUserId,
-            'type': type,
-            'text': text,
-            'job_id': jobId,
-            'is_read': false,
-            'created_at': createdAt.toIso8601String(),
-          })
-          .select()
-          .maybeSingle();
-      if (response == null) return null;
-      return Map<String, dynamic>.from(response);
+      // VIKTIG: ikke bruk .select() etter insert her.
+      // RLS SELECT-policy krever recipient_user_id = auth.uid(), og
+      // avsender ER IKKE mottaker. Et `.select()` ville derfor returnert
+      // 42501 ("new row violates row-level security policy") — ikke fra
+      // selve INSERTEN, men fra PostgREST sitt returnerings-step. Vi
+      // trenger heller ikke retur-raden: mottaker får den via realtime.
+      await _client.from('notifications').insert({
+        'id': id,
+        'recipient_user_id': recipientUserId,
+        'type': type,
+        'text': text,
+        'job_id': jobId,
+        'is_read': false,
+        'created_at': createdAt.toIso8601String(),
+      });
+      return <String, dynamic>{
+        'id': id,
+        'recipient_user_id': recipientUserId,
+        'type': type,
+        'text': text,
+        'job_id': jobId,
+        'is_read': false,
+        'created_at': createdAt.toIso8601String(),
+      };
     } catch (error) {
       debugPrint('SmartHjelp insertNotification error: $error');
       return null;

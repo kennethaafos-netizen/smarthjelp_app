@@ -639,7 +639,8 @@ class AppState extends ChangeNotifier {
   }
 
   UserProfile? getUserById(String id) {
-    if (id.isEmpty) return null;
+    // FASE 3 FIX: 'system' er ikke en UUID i profiles-tabellen.
+    if (id.isEmpty || id == 'system') return null;
     final cached = _users[id];
     if (cached != null) return cached;
     _ensureProfileLoaded(id);
@@ -1484,6 +1485,10 @@ class AppState extends ChangeNotifier {
   }
 
   void _ensureProfileLoaded(String id) {
+    // FASE 3 FIX: system-meldinger har senderId = 'system' (ikke UUID).
+    // Hvis vi fetcher det mot profiles-tabellen får vi 22P02
+    // ("invalid input syntax for type uuid"). Guard her.
+    if (id.isEmpty || id == 'system') return;
     if (_profilesRequested.contains(id)) return;
     _profilesRequested.add(id);
     _supabaseService.fetchProfile(id).then((p) {
