@@ -1,3 +1,4 @@
+// lib/providers/app_state.dart
 import 'dart:async';
 import 'dart:math';
 
@@ -538,6 +539,10 @@ class AppState extends ChangeNotifier {
         preferredArea: existing.preferredArea,
         rating: existing.rating,
         ratingCount: existing.ratingCount,
+        // FIX: push_notifications_enabled ble tidligere droppet her,
+        // så toggelen "kom tilbake på" etter login fordi _profileFromAuthUser
+        // defaulter til true. Server-verdien skal vinne på login.
+        pushNotificationsEnabled: existing.pushNotificationsEnabled,
         isVerified: effectiveVerified,
       );
       _users[_currentUser.id] = _currentUser;
@@ -1735,6 +1740,9 @@ class AppState extends ChangeNotifier {
           preferredArea: p.preferredArea,
           rating: p.rating,
           ratingCount: p.ratingCount,
+          // FIX: hold push-toggelen i sync også når endringen kommer
+          // fra en annen enhet eller fane via realtime.
+          pushNotificationsEnabled: p.pushNotificationsEnabled,
           isVerified: p.isVerified || authVerified,
         );
       }
