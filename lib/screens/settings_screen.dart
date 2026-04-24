@@ -1,3 +1,4 @@
+// lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,11 +20,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const Color _textMuted = Color(0xFF6E7A90);
   static const Color _danger = Color(0xFFDC2626);
 
-  static const String _prefPushEnabled = 'settings_push_enabled';
+  // Lyd har ingen server-motpart ennå, så den beholder SharedPreferences.
+  // Push-varsler lever derimot på `profiles.push_notifications_enabled` og
+  // styres via AppState.setPushNotifications (synk med server).
   static const String _prefSoundEnabled = 'settings_sound_enabled';
 
   bool _loading = true;
-  bool _pushEnabled = true;
   bool _soundEnabled = true;
 
   @override
@@ -36,22 +38,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _pushEnabled = prefs.getBool(_prefPushEnabled) ?? true;
       _soundEnabled = prefs.getBool(_prefSoundEnabled) ?? true;
       _loading = false;
     });
-  }
-
-  Future<void> _setPush(bool value) async {
-    setState(() => _pushEnabled = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefPushEnabled, value);
   }
 
   Future<void> _setSound(bool value) async {
     setState(() => _soundEnabled = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefSoundEnabled, value);
+  }
+
+  void _setPush(bool value) {
+    // Oppdaterer AppState + server i én operasjon. Bruker ChangeNotifier,
+    // så alle skjermer (profile_screen, account_screen, settings_screen)
+    // ser samme verdi umiddelbart.
+    context.read<AppState>().setPushNotifications(value);
   }
 
   Future<void> _confirmLogout() async {
@@ -101,6 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.watch<AppState>();
     final user = appState.currentUser;
     final hasProfile = user.id.isNotEmpty;
+    final pushEnabled = user.pushNotificationsEnabled;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -167,9 +170,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Få varsler om nye meldinger og oppdrag',
                         style: TextStyle(color: _textMuted, fontSize: 12.5),
                       ),
-                      value: _pushEnabled,
+                      value: pushEnabled,
                       activeColor: _primary,
-                      onChanged: _setPush,
+                      onChanged: hasProfile ? _setPush : null,
                     ),
                     _divider(),
                     SwitchListTile.adaptive(
