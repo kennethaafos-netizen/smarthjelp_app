@@ -1,4 +1,3 @@
-// lib/providers/app_state.dart
 import 'dart:async';
 import 'dart:math';
 

@@ -17,7 +17,6 @@ class _AccountScreenState extends State<AccountScreen> {
   late TextEditingController _areaCtrl;
 
   late bool _wantsToWork;
-  late bool _pushEnabled;
 
   @override
   void initState() {
@@ -31,7 +30,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _areaCtrl = TextEditingController(text: user.preferredArea);
 
     _wantsToWork = user.wantsToWork;
-    _pushEnabled = user.pushNotificationsEnabled;
   }
 
   @override
@@ -79,13 +77,8 @@ class _AccountScreenState extends State<AccountScreen> {
               setState(() => _wantsToWork = value);
             },
           ),
-          SwitchListTile(
-            value: _pushEnabled,
-            title: const Text('Push varsler'),
-            onChanged: (value) {
-              setState(() => _pushEnabled = value);
-            },
-          ),
+          // Push-varsler flyttet til Innstillinger for å ha én kilde til
+          // samme tilstand. Denne siden gjelder kun kontodata.
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () {
@@ -96,8 +89,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 wantsToWork: _wantsToWork,
                 preferredArea: _areaCtrl.text.trim(),
               );
-
-              appState.setPushNotifications(_pushEnabled);
 
               Navigator.pop(context);
             },

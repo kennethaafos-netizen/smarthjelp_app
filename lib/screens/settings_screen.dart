@@ -1,10 +1,8 @@
-// lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/app_state.dart';
-import 'onboarding_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,9 +18,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const Color _textMuted = Color(0xFF6E7A90);
   static const Color _danger = Color(0xFFDC2626);
 
-  // Lyd har ingen server-motpart ennå, så den beholder SharedPreferences.
-  // Push-varsler lever derimot på `profiles.push_notifications_enabled` og
-  // styres via AppState.setPushNotifications (synk med server).
+  // Push-varsler lever på serveren (`profiles.push_notifications_enabled`) og
+  // styres via AppState.setPushNotifications. Denne skjermen er ett eneste
+  // hovedsted; profile_screen viser bare status og navigerer hit.
+  // Lyd-toggelen har ingen server-motpart ennå, så den beholder SharedPreferences.
   static const String _prefSoundEnabled = 'settings_sound_enabled';
 
   bool _loading = true;
@@ -43,17 +42,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  void _setPush(bool value) {
+    context.read<AppState>().setPushNotifications(value);
+  }
+
   Future<void> _setSound(bool value) async {
     setState(() => _soundEnabled = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefSoundEnabled, value);
-  }
-
-  void _setPush(bool value) {
-    // Oppdaterer AppState + server i én operasjon. Bruker ChangeNotifier,
-    // så alle skjermer (profile_screen, account_screen, settings_screen)
-    // ser samme verdi umiddelbart.
-    context.read<AppState>().setPushNotifications(value);
   }
 
   Future<void> _confirmLogout() async {
@@ -88,14 +84,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
+    // Kaller AppState.logout() og lar BootstrapGate bytte til OnboardingScreen
+    // automatisk via isAuthenticated-endring. popUntil rydder bort denne
+    // pushede skjermen over AppShell.
     final navigator = Navigator.of(context);
+    final appState = context.read<AppState>();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('onboarding_done');
+    await appState.logout();
     if (!mounted) return;
-    navigator.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      (_) => false,
-    );
+    navigator.popUntil((r) => r.isFirst);
   }
 
   @override
@@ -103,7 +101,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.watch<AppState>();
     final user = appState.currentUser;
     final hasProfile = user.id.isNotEmpty;
-    final pushEnabled = user.pushNotificationsEnabled;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -170,7 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Få varsler om nye meldinger og oppdrag',
                         style: TextStyle(color: _textMuted, fontSize: 12.5),
                       ),
-                      value: pushEnabled,
+                      value: user.pushNotificationsEnabled,
                       activeColor: _primary,
                       onChanged: hasProfile ? _setPush : null,
                     ),

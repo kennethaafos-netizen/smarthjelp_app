@@ -11,7 +11,6 @@ import 'faq_screen.dart';
 import 'job_detail_screen.dart';
 import 'jobs_screen.dart';
 import 'notification_screen.dart';
-import 'onboarding_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -707,14 +706,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
+    // FIX: Tidligere pushet vi OnboardingScreen manuelt med
+    // pushAndRemoveUntil((_) => false), som fjernet _BootstrapGate fra
+    // navigator-stacken. Etter det lyttet ingen på AppState-auth-endringer,
+    // så login "gjorde ingenting" fordi BootstrapGate var borte fra treet.
+    //
+    // Riktig flyt: kall AppState.logout() og la BootstrapGate bytte home
+    // til OnboardingScreen automatisk når isAuthenticated=false.
     final navigator = Navigator.of(context);
+    final appState = context.read<AppState>();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('onboarding_done');
+    await appState.logout();
     if (!mounted) return;
-    navigator.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      (_) => false,
-    );
+    navigator.popUntil((r) => r.isFirst);
   }
 
   Widget _countPill(int count) {

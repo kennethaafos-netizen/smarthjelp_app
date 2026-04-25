@@ -8,6 +8,7 @@ import '../providers/app_state.dart';
 import 'account_screen.dart';
 import 'export_screen.dart';
 import 'jobs_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -66,10 +67,10 @@ class ProfileScreen extends StatelessWidget {
                 completed: completedTaken.length,
               ),
               const SizedBox(height: 16),
-              _switchCard(
-                value: user.pushNotificationsEnabled,
-                onChanged: (v) => appState.setPushNotifications(v),
-              ),
+              // Push-varsler administreres kun i Innstillinger. Her viser vi
+              // en read-only status-rad som navigerer dit ved trykk, så det
+              // ikke finnes to kilder til samme tilstand i UI-et.
+              _notificationsRow(context, user.pushNotificationsEnabled),
               const SizedBox(height: 16),
               _section(
                 title: 'Live status',
@@ -243,28 +244,35 @@ class ProfileScreen extends StatelessWidget {
                       user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    // Wrap lar verifisert-pillen flyte til neste linje på
+                    // smale skjermer i stedet for å overflowe (RenderFlex).
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: Color(0xFFFFD166),
-                          size: 18,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Color(0xFFFFD166),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              user.ratingCount == 0
+                                  ? '${user.rating.toStringAsFixed(1)}  ·  Ny'
+                                  : '${user.rating.toStringAsFixed(1)} (${user.ratingCount})',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          user.ratingCount == 0
-                              ? '${user.rating.toStringAsFixed(1)}  ·  Ny'
-                              : '${user.rating.toStringAsFixed(1)} (${user.ratingCount})',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                        if (isVerified) ...[
-                          const SizedBox(width: 8),
-                          _verifiedPill(),
-                        ],
+                        if (isVerified) _verifiedPill(),
                       ],
                     ),
                   ],
@@ -717,60 +725,86 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ---------- PUSH TOGGLE ----------
-  Widget _switchCard({
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
+  // ---------- NOTIFICATIONS ROW (navigerer til Innstillinger) ----------
+  // Erstatter det gamle _switchCard. Én kilde til push-tilstand = Innstillinger.
+  // Her vises status som pille, og raden pusher til SettingsScreen ved trykk.
+  Widget _notificationsRow(BuildContext context, bool enabled) {
     return _section(
       title: 'Varsler',
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _primary.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.notifications_active_outlined,
+                color: _primary,
+                size: 20,
+              ),
             ),
-            child: const Icon(
-              Icons.notifications_active_outlined,
-              color: _primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Push-varsler',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14.5,
-                    color: _text,
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Push-varsler',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                      color: _text,
+                    ),
                   ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Få beskjed når nye oppdrag dukker opp',
-                  style: TextStyle(
-                    color: _muted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
+                  SizedBox(height: 2),
+                  Text(
+                    'Administreres i Innstillinger',
+                    style: TextStyle(
+                      color: _muted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Switch.adaptive(
-            value: value,
-            onChanged: onChanged,
-            activeColor: _primary,
-          ),
-        ],
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: enabled
+                    ? _safeGreen.withOpacity(0.12)
+                    : _muted.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                enabled ? 'På' : 'Av',
+                style: TextStyle(
+                  color: enabled ? _safeGreen : _muted,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: _muted.withOpacity(0.8),
+            ),
+          ],
+        ),
       ),
     );
   }
