@@ -325,6 +325,39 @@ class SupabaseService {
     }
   }
 
+  /// Markerer alle uleste meldinger i en jobb som lest av currentUserId.
+  /// Best-effort: feiler stille hvis RLS/nettverk svikter, slik at
+  /// chat-skjermen ikke krasjer på lest-status. Realtime UPDATE-eventet
+  /// (samme kanal som reaksjoner bruker) leverer endringen tilbake til
+  /// avsender automatisk via _handleRemoteMessageUpsert i AppState.
+  ///
+  /// WHERE-klausul:
+  ///   * job_id = jobId
+  ///   * sender_id != currentUserId       (egne meldinger ekskluderes)
+  ///   * sender_id IS NOT NULL            (system-meldinger ekskluderes)
+  ///   * read_at IS NULL                  (idempotent, ingen rader berøres
+  ///                                       hvis alt allerede er lest)
+  ///
+  /// RLS gates på serversiden at auth.uid() faktisk er involvert i jobben
+  /// (eier eller worker) og ikke er senderen selv.
+  Future<void> markMessagesReadForJob({
+    required String jobId,
+    required String currentUserId,
+  }) async {
+    if (jobId.isEmpty || currentUserId.isEmpty) return;
+    try {
+      await _client
+          .from('chat_messages')
+          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('job_id', jobId)
+          .neq('sender_id', currentUserId)
+          .filter('sender_id', 'not.is', null)
+          .filter('read_at', 'is', null);
+    } catch (error) {
+      debugPrint('SmartHjelp markMessagesReadForJob error: $error');
+    }
+  }
+
   // =============================================================
   // NOTIFICATIONS
   // =============================================================

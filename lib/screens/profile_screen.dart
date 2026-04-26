@@ -244,8 +244,9 @@ class ProfileScreen extends StatelessWidget {
                       user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
                     ),
                     const SizedBox(height: 8),
-                    // Wrap lar verifisert-pillen flyte til neste linje på
-                    // smale skjermer i stedet for å overflowe (RenderFlex).
+                    // FIX: Wrap lar verifisert-pillen flyte til neste linje
+                    // på smale skjermer i stedet for å overflowe (RenderFlex
+                    // RIGHT OVERFLOWED indikator i debug-mode).
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,

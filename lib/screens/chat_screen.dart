@@ -48,7 +48,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (has != _hasText) setState(() => _hasText = has);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AppState>().loadMessagesForJob(widget.job.id);
+      final app = context.read<AppState>();
+      app.loadMessagesForJob(widget.job.id);
+      // FASE 4 / Milepæl 2: marker uleste meldinger fra motparten som
+      // lest så snart vi entrer chatten. Trygg å kalle uten venting —
+      // serverside WHERE-klausul gjør dette idempotent.
+      app.markChatAsRead(widget.job.id);
     });
   }
 
@@ -96,6 +101,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final counter = _counterparty(appState, liveJob);
     final counterName = counter?.firstName ?? 'Bruker';
     final initials = counterName.isNotEmpty ? counterName[0].toUpperCase() : '?';
+
+    // FASE 4 / Milepæl 2: hvis det dukker opp nye uleste meldinger fra
+    // motparten mens vi allerede står i chatten (realtime INSERT), marker
+    // dem som lest. Idempotent på serversiden, så vi kan trygt kalle hver
+    // build hvor det finnes noe ulest.
+    final hasUnreadFromOther = messages.any((m) =>
+        !m.isSystem && m.senderId != currentUser.id && m.readAt == null);
+    if (hasUnreadFromOther) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) appState.markChatAsRead(liveJob.id);
+      });
+    }
 
     return Scaffold(
       backgroundColor: _bg,
@@ -590,11 +607,19 @@ class _ChatScreenState extends State<ChatScreen> {
                               style: TextStyle(fontSize: 10.5, color: timeColor, fontWeight: FontWeight.w600)),
                           if (isMe) ...[
                             const SizedBox(width: 4),
-                            // MVP: én hake = sendt. Ekte lest-status tas i Fase 4.
+                            // FASE 4 / Milepæl 2: ekte lest-status.
+                            //   readAt == null  → grå/hvit enkelthake = sendt
+                            //   readAt != null  → blå dobbelthake     = lest
+                            // Sender ser dette i sanntid via realtime UPDATE
+                            // på chat_messages (samme kanal som reaksjoner).
                             Icon(
-                              Icons.done_rounded,
+                              msg.readAt == null
+                                  ? Icons.done_rounded
+                                  : Icons.done_all_rounded,
                               size: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              color: msg.readAt == null
+                                  ? Colors.white.withOpacity(0.9)
+                                  : const Color(0xFF7DD3FC),
                             ),
                           ],
                         ],

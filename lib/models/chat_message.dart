@@ -10,6 +10,12 @@ class ChatMessage {
   final String? replyToText;
   final String? imageUrl;
   final String? reaction;
+  // FASE 4 / Milepæl 2: ekte lest-status.
+  // Settes server-side når mottaker åpner chatten (read_at = now()).
+  // Null = sendt men ikke lest. Ikke-null = lest av mottaker.
+  // Bevisst valgfri/nullable så eksisterende ChatMessage(...)-kall
+  // forblir kompatible.
+  final DateTime? readAt;
 
   const ChatMessage({
     required this.id,
@@ -21,6 +27,7 @@ class ChatMessage {
     this.replyToText,
     this.imageUrl,
     this.reaction,
+    this.readAt,
   });
 
   ChatMessage copyWith({
@@ -33,6 +40,7 @@ class ChatMessage {
     Object? replyToText = _sentinel,
     Object? imageUrl = _sentinel,
     Object? reaction = _sentinel,
+    Object? readAt = _sentinel,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -48,10 +56,12 @@ class ChatMessage {
           : replyToText as String?,
       imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
       reaction: reaction == _sentinel ? this.reaction : reaction as String?,
+      readAt: readAt == _sentinel ? this.readAt : readAt as DateTime?,
     );
   }
 
   bool get isSystem => senderId == 'system';
+  bool get isRead => readAt != null;
 
   // ---------------- SUPABASE ----------------
 
@@ -71,10 +81,14 @@ class ChatMessage {
       replyToText: _nullableString(map['reply_to_text']),
       imageUrl: _nullableString(map['image_url']),
       reaction: _nullableString(map['reaction']),
+      readAt: _toDateTime(map['read_at']),
     );
   }
 
   Map<String, dynamic> toSupabaseInsert() {
+    // read_at SETTES IKKE her. Den eies server-side og fylles inn
+    // av mark-read-flyten når mottaker åpner chatten. Insert lager
+    // alltid en rad med read_at = NULL.
     return {
       'id': id,
       'job_id': jobId,

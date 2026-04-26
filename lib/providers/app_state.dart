@@ -538,10 +538,6 @@ class AppState extends ChangeNotifier {
         preferredArea: existing.preferredArea,
         rating: existing.rating,
         ratingCount: existing.ratingCount,
-        // FIX: push_notifications_enabled ble tidligere droppet her,
-        // så toggelen "kom tilbake på" etter login fordi _profileFromAuthUser
-        // defaulter til true. Server-verdien skal vinne på login.
-        pushNotificationsEnabled: existing.pushNotificationsEnabled,
         isVerified: effectiveVerified,
       );
       _users[_currentUser.id] = _currentUser;
@@ -1261,6 +1257,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// FASE 4 / Milepæl 2: marker alle uleste meldinger fra motparten i
+  /// denne jobben som lest. Best-effort, ingen retur. Realtime-kanalen
+  /// for chat_messages (UPDATE) leverer endringen tilbake til avsender,
+  /// som via _handleRemoteMessageUpsert + _mergeMessage får den nye
+  /// readAt på sin lokale ChatMessage og dermed blå dobbelthake.
+  ///
+  /// Trygg å kalle ofte: SupabaseService gjør idempotent WHERE-klausul,
+  /// så ingen rader berøres hvis alt allerede er lest.
+  Future<void> markChatAsRead(String jobId) async {
+    if (!_isAuthenticated) return;
+    if (jobId.isEmpty || _currentUser.id.isEmpty) return;
+    await _supabaseService.markMessagesReadForJob(
+      jobId: jobId,
+      currentUserId: _currentUser.id,
+    );
+  }
+
   void sendMessage({
     required String jobId,
     required String text,
@@ -1739,9 +1752,6 @@ class AppState extends ChangeNotifier {
           preferredArea: p.preferredArea,
           rating: p.rating,
           ratingCount: p.ratingCount,
-          // FIX: hold push-toggelen i sync også når endringen kommer
-          // fra en annen enhet eller fane via realtime.
-          pushNotificationsEnabled: p.pushNotificationsEnabled,
           isVerified: p.isVerified || authVerified,
         );
       }
