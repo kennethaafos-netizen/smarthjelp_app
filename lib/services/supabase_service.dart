@@ -458,6 +458,68 @@ class SupabaseService {
   }
 
   // =============================================================
+  // RATINGS (Milepæl 3)
+  // =============================================================
+
+  /// Insert av en rating for en fullført + godkjent jobb.
+  ///
+  /// Server-trigger (after_ratings_insert) oppdaterer
+  /// `profiles.rating` og `profiles.rating_count` for ratee_user_id
+  /// fra scratch (avg + count over alle ratings). Realtime
+  /// profiles-kanalen leverer den oppdaterte raden tilbake til alle
+  /// klienter, så trust-kort live-oppdateres uten ekstra arbeid her.
+  ///
+  /// Returnerer true ved suksess. Feiler stille (returnerer false) på
+  /// RLS- eller unique-konflikt slik at UI kan vise enkel feilmelding
+  /// uten å krasje.
+  Future<bool> createRating({
+    required String jobId,
+    required String raterUserId,
+    required String rateeUserId,
+    required int stars,
+  }) async {
+    if (jobId.isEmpty || raterUserId.isEmpty || rateeUserId.isEmpty) {
+      return false;
+    }
+    if (stars < 1 || stars > 5) return false;
+    if (raterUserId == rateeUserId) return false;
+    try {
+      // Bruker IKKE .select() — vi trenger ikke retur-raden, og det
+      // unngår en ekstra round-trip mot SELECT-policy.
+      await _client.from('ratings').insert({
+        'job_id': jobId,
+        'rater_user_id': raterUserId,
+        'ratee_user_id': rateeUserId,
+        'stars': stars,
+      });
+      return true;
+    } catch (error) {
+      debugPrint('SmartHjelp createRating error: $error');
+      return false;
+    }
+  }
+
+  /// Henter id-ene til alle jobber currentUserId allerede har ratet.
+  /// Brukes til å gate "Gi vurdering"-knappen i job_detail_screen.
+  Future<Set<String>> fetchMyRatedJobIds(String currentUserId) async {
+    if (currentUserId.isEmpty) return <String>{};
+    try {
+      final response = await _client
+          .from('ratings')
+          .select('job_id')
+          .eq('rater_user_id', currentUserId);
+
+      return (response as List<dynamic>)
+          .map((row) => (row['job_id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    } catch (error) {
+      debugPrint('SmartHjelp fetchMyRatedJobIds error: $error');
+      return <String>{};
+    }
+  }
+
+  // =============================================================
   // INTERNAL HELPERS
   // =============================================================
 

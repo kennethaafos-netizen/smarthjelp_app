@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
+import '../widgets/rating_dialog.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
 import 'post_job_screen.dart';
@@ -136,6 +137,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 _descriptionCard(job),
                 const SizedBox(height: 14),
                 _paymentCard(job, isOwner, isWorker),
+                // Milepæl 3: rating-kort vises kun når jobben er
+                // completed+approved og bruker er involvert + ikke
+                // har ratet ennå. Den interne metoden returnerer
+                // SizedBox.shrink() når ikke aktuelt, så ingen ekstra
+                // gating trengs her.
+                _ratingCard(appState, job, isOwner, isWorker),
                 const SizedBox(height: 14),
                 _infoCard(job),
               ],
@@ -779,6 +786,169 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         border: Border.all(color: const Color(0xFFE4E9F2)),
       ),
       child: child,
+    );
+  }
+
+  // Milepæl 3: "Gi vurdering"-kort. Vises kun når:
+  //   * jobben er completed AND isApprovedByOwner (utbetaling klar)
+  //   * bruker er involvert (eier eller worker)
+  //   * counterparty finnes
+  //   * bruker har IKKE ratet jobben ennå
+  // Ellers returneres SizedBox.shrink() — ingen tomt kort, ingen ekstra
+  // mellomrom. Knappen forsvinner uten refresh fordi rateForJob
+  // optimistisk legger jobId i _ratedJobIds + notifyListeners().
+  Widget _ratingCard(AppState appState, Job job, bool isOwner, bool isWorker) {
+    if (job.status != JobStatus.completed) return const SizedBox.shrink();
+    if (!job.isApprovedByOwner) return const SizedBox.shrink();
+    if (!isOwner && !isWorker) return const SizedBox.shrink();
+    if (appState.hasRatedJob(job.id)) return const SizedBox.shrink();
+
+    final String? counterpartyId = isOwner
+        ? job.acceptedByUserId
+        : job.createdByUserId;
+    if (counterpartyId == null || counterpartyId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final UserProfile? counterparty = appState.getUserById(counterpartyId);
+    final String counterpartyName =
+        (counterparty?.firstName.isNotEmpty ?? false)
+            ? counterparty!.firstName
+            : 'motparten';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: _card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_primary, _accent],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.star_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Vurdering',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: _textPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Hvordan var $counterpartyName? Din vurdering hjelper '
+              'andre brukere å finne pålitelige folk.',
+              style: const TextStyle(
+                color: _textMuted,
+                fontWeight: FontWeight.w500,
+                fontSize: 13.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: GestureDetector(
+                onTap: () => _openRatingDialog(
+                  appState,
+                  jobId: job.id,
+                  rateeUserId: counterpartyId,
+                  rateeName: counterpartyName,
+                ),
+                child: Container(
+                  height: 50,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_primary, _accent],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _primary.withOpacity(0.24),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.star_rounded,
+                          color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Gi vurdering',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRatingDialog(
+    AppState appState, {
+    required String jobId,
+    required String rateeUserId,
+    required String rateeName,
+  }) async {
+    final result = await showDialog<double>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const RatingDialog(),
+    );
+    if (result == null) return; // bruker avbrøt
+    if (!mounted) return;
+
+    final stars = result.round().clamp(1, 5);
+    final ok = await appState.rateForJob(
+      jobId: jobId,
+      rateeUserId: rateeUserId,
+      stars: stars,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok
+            ? 'Takk for vurderingen! ⭐ $stars'
+            : 'Kunne ikke lagre vurderingen. Prøv igjen.'),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 

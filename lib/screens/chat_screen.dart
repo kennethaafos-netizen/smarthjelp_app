@@ -11,6 +11,7 @@ import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import '../services/supabase_service.dart';
+import 'image_viewer_screen.dart';
 import 'job_detail_screen.dart';
 
 const Color _primary = Color(0xFF2356E8);
@@ -572,19 +573,37 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       if (msg.imageUrl != null && msg.imageUrl!.startsWith('http')) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            msg.imageUrl!,
-                            height: 160,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
+                        // Trykk på bildet → fullscreen viewer.
+                        // HitTestBehavior.opaque + egen onTap stopper event-
+                        // bubblingen til ytre GestureDetector som ellers ville
+                        // trigget hjerte-reaksjon. Reaksjon på resten av bobla
+                        // (tekst, time, hake) er uendret.
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ImageViewerScreen(
+                                  imageUrls: [msg.imageUrl!],
+                                ),
+                              ),
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              msg.imageUrl!,
                               height: 160,
                               width: double.infinity,
-                              color: _bg,
-                              alignment: Alignment.center,
-                              child: const Icon(Icons.broken_image, color: _textMuted),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 160,
+                                width: double.infinity,
+                                color: _bg,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.broken_image, color: _textMuted),
+                              ),
                             ),
                           ),
                         ),

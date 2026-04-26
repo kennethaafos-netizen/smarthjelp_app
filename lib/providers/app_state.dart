@@ -175,6 +175,11 @@ class AppState extends ChangeNotifier {
 
   final List<AppNotification> _notifications = [];
 
+  // Milepæl 3: id-er på jobber jeg allerede har ratet. Lastes fra
+  // `ratings`-tabellen ved login/bootstrap. Brukes av hasRatedJob for
+  // å gate "Gi vurdering"-knappen i job_detail_screen.
+  final Set<String> _ratedJobIds = <String>{};
+
   bool _isLoadingJobs = false;
   bool _hasLoadedJobs = false;
   String? _jobsError;
@@ -355,6 +360,7 @@ class AppState extends ChangeNotifier {
       await ensureJobsLoaded();
       await _hydrateOwnProfile();
       await _loadNotifications();
+      await _loadRatedJobIds();
     }
   }
 
@@ -396,6 +402,7 @@ class AppState extends ChangeNotifier {
       await ensureJobsLoaded();
       await _hydrateOwnProfile();
       await _loadNotifications();
+      await _loadRatedJobIds();
       return null;
     } on AuthException catch (e) {
       return e.message;
@@ -436,6 +443,7 @@ class AppState extends ChangeNotifier {
       await ensureJobsLoaded();
       await _hydrateOwnProfile();
       await _loadNotifications();
+      await _loadRatedJobIds();
       return null;
     } on AuthException catch (e) {
       return e.message;
@@ -471,6 +479,7 @@ class AppState extends ChangeNotifier {
     _jobImages.clear();
     _profilesRequested.clear();
     _preferredCategories.clear();
+    _ratedJobIds.clear();
   }
 
   UserProfile _profileFromAuthUser(User user) {
@@ -1272,6 +1281,74 @@ class AppState extends ChangeNotifier {
       jobId: jobId,
       currentUserId: _currentUser.id,
     );
+  }
+
+  // ---- RATINGS (Milepæl 3) ----
+
+  /// True hvis nåværende bruker allerede har gitt en rating for denne jobben.
+  /// Brukes til å gate "Gi vurdering"-knappen i job_detail_screen.
+  bool hasRatedJob(String jobId) => _ratedJobIds.contains(jobId);
+
+  /// Submitter en rating for en fullført + godkjent jobb.
+  ///
+  /// Optimistisk: legger jobId i _ratedJobIds og notifyListeners() med
+  /// en gang så knappen forsvinner umiddelbart. Hvis SQL feiler
+  /// (RLS, unique-konflikt, nettverk) ruller vi tilbake.
+  ///
+  /// Trigger på serverside oppdaterer profiles.rating + rating_count
+  /// fra scratch (avg over alle ratings). Realtime profiles-kanalen
+  /// leverer endringen tilbake til alle klienter — også til ratee selv,
+  /// som ser sitt nye snitt på Profil/Trust-kort uten refresh.
+  Future<bool> rateForJob({
+    required String jobId,
+    required String rateeUserId,
+    required int stars,
+  }) async {
+    if (!_isAuthenticated) return false;
+    if (jobId.isEmpty || _currentUser.id.isEmpty) return false;
+    if (rateeUserId.isEmpty || rateeUserId == _currentUser.id) return false;
+    if (stars < 1 || stars > 5) return false;
+    if (_ratedJobIds.contains(jobId)) return false;
+
+    // Defensiv gating: kun completed+approved på lokal job. RLS
+    // dobler opp på serversiden uansett.
+    final job = getJobById(jobId);
+    if (job == null) return false;
+    if (job.status != JobStatus.completed) return false;
+    if (!job.isApprovedByOwner) return false;
+
+    // Kun involverte. RLS blokker ellers.
+    final involved = job.createdByUserId == _currentUser.id ||
+        job.acceptedByUserId == _currentUser.id;
+    if (!involved) return false;
+
+    // Optimistisk lokal oppdatering — knappen forsvinner umiddelbart.
+    _ratedJobIds.add(jobId);
+    notifyListeners();
+
+    final ok = await _supabaseService.createRating(
+      jobId: jobId,
+      raterUserId: _currentUser.id,
+      rateeUserId: rateeUserId,
+      stars: stars,
+    );
+
+    if (!ok) {
+      // Rollback hvis insert feilet.
+      _ratedJobIds.remove(jobId);
+      notifyListeners();
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _loadRatedJobIds() async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) return;
+    final ids = await _supabaseService.fetchMyRatedJobIds(_currentUser.id);
+    _ratedJobIds
+      ..clear()
+      ..addAll(ids);
+    notifyListeners();
   }
 
   void sendMessage({
