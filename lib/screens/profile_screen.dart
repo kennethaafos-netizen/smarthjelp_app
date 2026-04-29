@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
+import '../widgets/trust_badges.dart';
 import 'account_screen.dart';
 import 'export_screen.dart';
 import 'jobs_screen.dart';
@@ -178,7 +179,12 @@ class ProfileScreen extends StatelessWidget {
     required int completedCount,
     required int activeCount,
   }) {
-    final isVerified = user.email.isNotEmpty;
+    // Sprint 5: bug-fix på tvers av profil-skjermen.
+    // Tidligere brukte vi `user.email.isNotEmpty` som proxy for "verifisert".
+    // Det var feil — alle innloggede brukere har e-post-attributt, men ikke
+    // alle har bekreftet den. Bruk det reelle server-flagget i stedet.
+    // Vi viser nå differensiert trust via TrustBadges, ikke en enkel
+    // "Verifisert"-pille.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -244,8 +250,8 @@ class ProfileScreen extends StatelessWidget {
                       user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
                     ),
                     const SizedBox(height: 8),
-                    // FIX: Wrap lar verifisert-pillen flyte til neste linje
-                    // på smale skjermer i stedet for å overflowe (RenderFlex
+                    // Wrap lar innholdet flyte til neste linje på smale
+                    // skjermer i stedet for å overflowe (RenderFlex
                     // RIGHT OVERFLOWED indikator i debug-mode).
                     Wrap(
                       spacing: 8,
@@ -273,7 +279,16 @@ class ProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (isVerified) _verifiedPill(),
+                        // Sprint 5: differensiert trust i stedet for én
+                        // upresis "Verifisert"-pille. Beholder _verifiedPill
+                        // som privat helper i fila for bakoverkompatibilitet,
+                        // men bruker den ikke fra UI-en lenger.
+                        TrustBadges(
+                          user: user,
+                          completedJobCount: completedCount,
+                          onDarkBackground: true,
+                          showNewUserPill: false,
+                        ),
                       ],
                     ),
                   ],
@@ -527,7 +542,12 @@ class ProfileScreen extends StatelessWidget {
     required int completedCount,
     required int activeCount,
   }) {
-    final isVerified = user.email.isNotEmpty;
+    // Sprint 5: bug-fix. Bruker det reelle server-flagget i stedet for
+    // `user.email.isNotEmpty`. Dette kortet viser fortsatt 4 numeriske
+    // tiles, men nederst legger vi til TrustBadges-rad som differensierer
+    // mellom e-post-bekreftet, profil-utfylt og fullført-oppdrag —
+    // pluss en grønn "Pålitelig bruker"-pille når alle tre er oppfylt.
+    final isEmailVerified = user.isVerified;
     return _section(
       title: 'Trust',
       subtitle: 'Dine tall som bygger tillit hos andre brukere',
@@ -549,11 +569,13 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _trustTile(
-                  icon: Icons.verified_rounded,
+                  icon: Icons.mark_email_read_outlined,
                   accent: _primary,
-                  label: 'Verifisert',
-                  value: isVerified ? 'Ja' : 'Nei',
-                  sub: isVerified ? 'E-post bekreftet' : 'Ikke bekreftet',
+                  label: 'E-post',
+                  value: isEmailVerified ? 'Bekreftet' : 'Ikke bekreftet',
+                  sub: isEmailVerified
+                      ? 'Brukeren har bekreftet e-post'
+                      : 'Be brukeren bekrefte e-post',
                 ),
               ),
             ],
@@ -581,6 +603,14 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          // Sprint 5: differensiert trust-rad. Wrap så pill-ene flyter til
+          // neste linje på smale skjermer. "Pålitelig bruker"-pille dukker
+          // opp som ekstra grønn pille når alle tre kriterier er oppfylt.
+          TrustBadges(
+            user: user,
+            completedJobCount: completedCount,
           ),
         ],
       ),

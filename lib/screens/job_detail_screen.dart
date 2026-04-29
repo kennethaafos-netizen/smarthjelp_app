@@ -5,6 +5,7 @@ import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import '../widgets/rating_dialog.dart';
+import '../widgets/trust_badges.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
 import 'post_job_screen.dart';
@@ -421,54 +422,57 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Row(
+                  // Sprint 5: rating + fullført-tall i én kompakt rad,
+                  // og differensiert trust under via TrustBadges.
+                  // Beholder Wrap her så pill-ene flyter til neste linje
+                  // på smale skjermer (samme mønster som profilen).
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      const Icon(Icons.star_rounded,
-                          size: 14, color: Color(0xFFFFB020)),
-                      const SizedBox(width: 2),
-                      Text(
-                        other.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12.5,
-                          color: _textPrimary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Icon(Icons.task_alt_rounded,
-                          size: 13, color: _accent),
-                      const SizedBox(width: 3),
-                      Text(
-                        completedCount == 1
-                            ? '1 fullført oppdrag'
-                            : '$completedCount fullførte oppdrag',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: _textPrimary,
-                        ),
-                      ),
-                      if (other.isVerified) ...[
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: _primary.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            'Verifisert',
-                            style: TextStyle(
-                              color: _primary,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded,
+                              size: 14, color: Color(0xFFFFB020)),
+                          const SizedBox(width: 2),
+                          Text(
+                            other.rating.toStringAsFixed(1),
+                            style: const TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: 10.5,
-                              letterSpacing: 0.3,
+                              fontSize: 12.5,
+                              color: _textPrimary,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.task_alt_rounded,
+                              size: 13, color: _accent),
+                          const SizedBox(width: 3),
+                          Text(
+                            completedCount == 1
+                                ? '1 fullført oppdrag'
+                                : '$completedCount fullførte oppdrag',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: _textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Differensiert trust-rad — erstatter den gamle enkelt-
+                  // pillen "Verifisert" som gjaldt e-post alene.
+                  TrustBadges(
+                    user: other,
+                    completedJobCount: completedCount,
                   ),
                 ],
               ),

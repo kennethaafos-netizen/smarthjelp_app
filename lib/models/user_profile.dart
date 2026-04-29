@@ -54,6 +54,25 @@ class UserProfile {
     );
   }
 
+  // ---------------- COMPUTED TRUST GETTERS (Sprint 5) ----------------
+  //
+  // Vi splitter trust-konseptet i flere kriterier i stedet for å bruke
+  // én "Verifisert"-pille som tidligere. Disse er alle computed og
+  // krever ingen DB-endringer:
+  //
+  //  * hasEmailVerified  — alias for isVerified, gjør UI-koden tydeligere
+  //                        på at flagget kun betyr e-post-bekreftet i dag.
+  //  * hasCompleteProfile — telefon + område fylt ut. Vi sjekker IKKE
+  //                        firstName her fordi den defaulter til 'Bruker'
+  //                        og er en dårlig indikator på reell utfylling.
+  //
+  // "1+ fullført oppdrag"-kriteriet beregnes via AppState.completedJobCountForUser
+  // og kombineres med disse i TrustBadges-widgeten. Modellen vet ikke om
+  // jobs-tabellen og skal ikke vite det.
+  bool get hasEmailVerified => isVerified;
+  bool get hasCompleteProfile =>
+      phone.trim().isNotEmpty && preferredArea.trim().isNotEmpty;
+
   // ---------------- SUPABASE ----------------
 
   factory UserProfile.fromSupabase(Map<String, dynamic> map) {

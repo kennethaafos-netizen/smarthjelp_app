@@ -236,6 +236,24 @@ class AppState extends ChangeNotifier {
 
   bool get hasUnreadChat => unreadChatNotificationCount > 0;
 
+  // Sprint 5: per-jobb unread for ChatList. Bygger på samme
+  // notifications-kilde som hasUnreadChat — ground-truth ved login og
+  // realtime-oppdatert ved nye meldinger. Dermed slipper vi å laste
+  // chat_messages for hver chat på forhånd bare for å vise ulest-prikk.
+  int unreadMessageCountForJob(String jobId) {
+    if (jobId.isEmpty || _currentUser.id.isEmpty) return 0;
+    return _notifications
+        .where((n) =>
+            n.recipientUserId == _currentUser.id &&
+            !n.isRead &&
+            n.type == AppNotificationType.message &&
+            n.jobId == jobId)
+        .length;
+  }
+
+  bool hasUnreadMessagesForJob(String jobId) =>
+      unreadMessageCountForJob(jobId) > 0;
+
   void markNotificationRead(String id) {
     final index = _notifications.indexWhere((n) => n.id == id);
     if (index == -1) return;
@@ -1277,10 +1295,40 @@ class AppState extends ChangeNotifier {
   Future<void> markChatAsRead(String jobId) async {
     if (!_isAuthenticated) return;
     if (jobId.isEmpty || _currentUser.id.isEmpty) return;
+
+    // Markerer chat_messages.read_at for alle uleste meldinger i denne
+    // jobben fra motparten. Realtime UPDATE leverer endringen tilbake
+    // til avsender → blå dobbelthake (Milepæl 2).
     await _supabaseService.markMessagesReadForJob(
       jobId: jobId,
       currentUserId: _currentUser.id,
     );
+
+    // Sprint 5: rydder også korresponderende chat-type notifikasjoner
+    // for samme jobId. Det gjør at bottom-nav badge og ulest-prikken i
+    // ChatList forsvinner samtidig som brukeren faktisk ser meldingene.
+    // Lokal optimistisk oppdatering først, deretter remote — samme
+    // mønster som markNotificationRead.
+    var changed = false;
+    final unreadIds = <String>[];
+    for (var i = 0; i < _notifications.length; i++) {
+      final n = _notifications[i];
+      if (n.recipientUserId == _currentUser.id &&
+          !n.isRead &&
+          n.type == AppNotificationType.message &&
+          n.jobId == jobId) {
+        _notifications[i] = n.copyWith(isRead: true);
+        unreadIds.add(n.id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+      for (final id in unreadIds) {
+        // Fire-and-forget. SupabaseService logger feil internt.
+        _supabaseService.markNotificationReadRemote(id);
+      }
+    }
   }
 
   // ---- RATINGS (Milepæl 3) ----

@@ -144,8 +144,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       hasProfile && user.email.isNotEmpty ? user.email : '—',
                     ),
                     _divider(),
+                    // Sprint 5: presisering. Tidligere stod det "Verifisert"
+                    // her, men flagget er reelt sett "e-post bekreftet" og
+                    // betyr ikke mer enn det. Differensiert trust vises nå
+                    // i Profil/job_detail via TrustBadges.
                     _infoRow(
-                      'Verifisert',
+                      'E-post bekreftet',
                       user.isVerified ? 'Ja' : 'Nei',
                     ),
                   ],
