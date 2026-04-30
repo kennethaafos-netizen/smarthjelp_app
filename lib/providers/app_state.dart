@@ -1347,10 +1347,15 @@ class AppState extends ChangeNotifier {
   /// fra scratch (avg over alle ratings). Realtime profiles-kanalen
   /// leverer endringen tilbake til alle klienter — også til ratee selv,
   /// som ser sitt nye snitt på Profil/Trust-kort uten refresh.
+  ///
+  /// Sprint 5.5: `tags` er valgfri (default const []) slik at
+  /// eksisterende kallsteder ikke breaker. RatingDialog sender
+  /// brukerens valgte chips ('Punktlig','Hyggelig','Hjelpsom','Ryddig').
   Future<bool> rateForJob({
     required String jobId,
     required String rateeUserId,
     required int stars,
+    List<String> tags = const [],
   }) async {
     if (!_isAuthenticated) return false;
     if (jobId.isEmpty || _currentUser.id.isEmpty) return false;
@@ -1379,6 +1384,7 @@ class AppState extends ChangeNotifier {
       raterUserId: _currentUser.id,
       rateeUserId: rateeUserId,
       stars: stars,
+      tags: tags,
     );
 
     if (!ok) {

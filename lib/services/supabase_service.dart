@@ -469,6 +469,12 @@ class SupabaseService {
   /// profiles-kanalen leverer den oppdaterte raden tilbake til alle
   /// klienter, så trust-kort live-oppdateres uten ekstra arbeid her.
   ///
+  /// Sprint 5.5: tags er en valgfri text[] (f.eks. ['Punktlig','Hyggelig'])
+  /// som lagres i `ratings.tags`. Default const [] gjør at eksisterende
+  /// kall uten tags fortsatt fungerer — vi sender bare en tom array.
+  /// Triggeren rører ikke tags, så `profiles.rating`/`rating_count`
+  /// påvirkes ikke.
+  ///
   /// Returnerer true ved suksess. Feiler stille (returnerer false) på
   /// RLS- eller unique-konflikt slik at UI kan vise enkel feilmelding
   /// uten å krasje.
@@ -477,6 +483,7 @@ class SupabaseService {
     required String raterUserId,
     required String rateeUserId,
     required int stars,
+    List<String> tags = const [],
   }) async {
     if (jobId.isEmpty || raterUserId.isEmpty || rateeUserId.isEmpty) {
       return false;
@@ -484,6 +491,15 @@ class SupabaseService {
     if (stars < 1 || stars > 5) return false;
     if (raterUserId == rateeUserId) return false;
     try {
+      // Sprint 5.5: dedupliker + trim defensivt selv om dialogen
+      // sender Set<String> med predefinerte labels. Tom array er OK
+      // for kolonnen (NOT NULL DEFAULT '{}').
+      final cleanTags = tags
+          .map((t) => t.trim())
+          .where((t) => t.isNotEmpty)
+          .toSet()
+          .toList();
+
       // Bruker IKKE .select() — vi trenger ikke retur-raden, og det
       // unngår en ekstra round-trip mot SELECT-policy.
       await _client.from('ratings').insert({
@@ -491,6 +507,7 @@ class SupabaseService {
         'rater_user_id': raterUserId,
         'ratee_user_id': rateeUserId,
         'stars': stars,
+        'tags': cleanTags,
       });
       return true;
     } catch (error) {

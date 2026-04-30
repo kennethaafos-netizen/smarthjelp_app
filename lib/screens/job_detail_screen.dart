@@ -128,6 +128,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                         : 'Du er i gang. Husk å trykke «Fullfør» når jobben er ferdig — da må oppdragsgiver godkjenne for utbetaling.',
                   ),
 
+                // Sprint 6 UX: rating-banner ligger ØVERST som premium
+                // CTA rett etter status-bannerene, slik at brukeren ser
+                // den uten scroll. Banneret er det første som møter
+                // øyet på et nettopp fullført + godkjent oppdrag.
+                // Returneres tom når ikke aktuelt (ikke completed+
+                // approved, ikke involvert, allerede ratet, eller
+                // counterparty mangler), så ingen ekstra gating trengs.
+                // Backup-knapp ligger også i bottom action area —
+                // begge punkter kaller samme _openRatingDialog og
+                // forsvinner samtidig via hasRatedJob.
+                _ratingBanner(appState, job, isOwner, isWorker),
+
                 if (images.isNotEmpty) _heroGallery(images),
                 const SizedBox(height: 16),
                 _titleCard(job),
@@ -138,12 +150,6 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 _descriptionCard(job),
                 const SizedBox(height: 14),
                 _paymentCard(job, isOwner, isWorker),
-                // Milepæl 3: rating-kort vises kun når jobben er
-                // completed+approved og bruker er involvert + ikke
-                // har ratet ennå. Den interne metoden returnerer
-                // SizedBox.shrink() når ikke aktuelt, så ingen ekstra
-                // gating trengs her.
-                _ratingCard(appState, job, isOwner, isWorker),
                 const SizedBox(height: 14),
                 _infoCard(job),
               ],
@@ -793,15 +799,32 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  // Milepæl 3: "Gi vurdering"-kort. Vises kun når:
+  // Sprint 6 UX: premium rating-banner som ligger ØVERST i job_detail
+  // (rett etter status-bannerene, før hero-gallery). Erstatter det gamle
+  // _ratingCard som lå mellom payment- og info-kortet og ble borte i
+  // scroll. Visuelt: full gradient-stripe (_primary → _accent) med
+  // hvit tekst, stjerne-ikon i glassboks, chevron til høyre — én
+  // sammenhengende klikkflate så hele banneret er CTA-en.
+  //
+  // Vises kun når:
   //   * jobben er completed AND isApprovedByOwner (utbetaling klar)
   //   * bruker er involvert (eier eller worker)
   //   * counterparty finnes
   //   * bruker har IKKE ratet jobben ennå
   // Ellers returneres SizedBox.shrink() — ingen tomt kort, ingen ekstra
-  // mellomrom. Knappen forsvinner uten refresh fordi rateForJob
-  // optimistisk legger jobId i _ratedJobIds + notifyListeners().
-  Widget _ratingCard(AppState appState, Job job, bool isOwner, bool isWorker) {
+  // mellomrom. Banneret forsvinner uten refresh fordi rateForJob
+  // optimistisk legger jobId i _ratedJobIds + notifyListeners(), og
+  // build() leser hasRatedJob på nytt via context.watch.
+  //
+  // Backup-knapp finnes også i bottom action area (se _actionButtons)
+  // for å fange tilfeller der brukeren scroller forbi eller åpner
+  // skjermen igjen senere — begge bruker samme _openRatingDialog.
+  Widget _ratingBanner(
+    AppState appState,
+    Job job,
+    bool isOwner,
+    bool isWorker,
+  ) {
     if (job.status != JobStatus.completed) return const SizedBox.shrink();
     if (!job.isApprovedByOwner) return const SizedBox.shrink();
     if (!isOwner && !isWorker) return const SizedBox.shrink();
@@ -820,105 +843,106 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             : 'motparten';
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: _card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openRatingDialog(
+            appState,
+            jobId: job.id,
+            rateeUserId: counterpartyId,
+            rateeName: counterpartyName,
+          ),
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_primary, _accent],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: _primary.withOpacity(0.28),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_primary, _accent],
+                    color: Colors.white.withOpacity(0.20),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.35),
+                      width: 1,
                     ),
-                    borderRadius: BorderRadius.circular(12),
                   ),
                   alignment: Alignment.center,
                   child: const Icon(
                     Icons.star_rounded,
                     color: Colors.white,
-                    size: 22,
+                    size: 24,
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Vurdering',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: _textPrimary,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Hvordan var $counterpartyName? Din vurdering hjelper '
-              'andre brukere å finne pålitelige folk.',
-              style: const TextStyle(
-                color: _textMuted,
-                fontWeight: FontWeight.w500,
-                fontSize: 13.5,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: GestureDetector(
-                onTap: () => _openRatingDialog(
-                  appState,
-                  jobId: job.id,
-                  rateeUserId: counterpartyId,
-                  rateeName: counterpartyName,
-                ),
-                child: Container(
-                  height: 50,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_primary, _accent],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _primary.withOpacity(0.24),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.star_rounded,
-                          color: Colors.white, size: 18),
-                      SizedBox(width: 8),
                       Text(
-                        'Gi vurdering',
-                        style: TextStyle(
+                        'Hvordan var $counterpartyName?',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          letterSpacing: 0.2,
+                          fontSize: 15.5,
+                          letterSpacing: -0.1,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Gi en kjapp vurdering — det hjelper hele plattformen',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                          height: 1.3,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.20),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -930,7 +954,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     required String rateeUserId,
     required String rateeName,
   }) async {
-    final result = await showDialog<double>(
+    // Sprint 5.5: dialogen returnerer nå RatingResult (stars + tags),
+    // ikke lenger bare double. Tags lagres på serversiden i ratings.tags
+    // og brukes senere til topp-tags på trust-kort.
+    final result = await showDialog<RatingResult>(
       context: context,
       barrierDismissible: true,
       builder: (_) => const RatingDialog(),
@@ -938,11 +965,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     if (result == null) return; // bruker avbrøt
     if (!mounted) return;
 
-    final stars = result.round().clamp(1, 5);
+    final stars = result.stars.clamp(1, 5);
     final ok = await appState.rateForJob(
       jobId: jobId,
       rateeUserId: rateeUserId,
       stars: stars,
+      tags: result.tags,
     );
 
     if (!mounted) return;
@@ -1064,6 +1092,37 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         () => _confirmCancel(job.id, label: 'Avbryt oppdrag?'),
         isDanger: true,
       ));
+    }
+
+    // Sprint 6 UX: backup "Gi vurdering"-knapp i bottom action area.
+    // Top-banneret er primær CTA, men dersom brukeren scroller forbi
+    // det eller åpner skjermen igjen senere, er denne knappen et fast
+    // ankerpunkt nederst. Samme gating + samme _openRatingDialog som
+    // banneret, og forsvinner samtidig via hasRatedJob etter rating.
+    if (!_isLoading &&
+        job.status == JobStatus.completed &&
+        job.isApprovedByOwner &&
+        (isOwner || isWorker) &&
+        !appState.hasRatedJob(job.id)) {
+      final String? counterpartyId =
+          isOwner ? job.acceptedByUserId : job.createdByUserId;
+      if (counterpartyId != null && counterpartyId.isNotEmpty) {
+        final UserProfile? counterparty = appState.getUserById(counterpartyId);
+        final String counterpartyName =
+            (counterparty?.firstName.isNotEmpty ?? false)
+                ? counterparty!.firstName
+                : 'motparten';
+        children.add(_primaryButton(
+          'Gi vurdering',
+          Icons.star_rounded,
+          () => _openRatingDialog(
+            appState,
+            jobId: job.id,
+            rateeUserId: counterpartyId,
+            rateeName: counterpartyName,
+          ),
+        ));
+      }
     }
 
     if (job.acceptedByUserId != null) {

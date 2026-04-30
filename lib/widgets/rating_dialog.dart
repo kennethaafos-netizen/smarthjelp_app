@@ -1,6 +1,21 @@
 // UI UPGRADE: premium polish, hierarchy, spacing, and clearer navigation
 import 'package:flutter/material.dart';
 
+/// Sprint 5.5: returneres når brukeren trykker "Send rating".
+/// Erstatter den gamle pop-kontrakten som kun returnerte stars (double).
+/// Tags er en (mulig tom) liste av predefinerte labels fra dialogen.
+/// Kommentar er foreløpig parkert — ingen DB-kolonne for det ennå, og
+/// vi vil ikke samle data vi ikke kan lagre.
+class RatingResult {
+  final int stars;
+  final List<String> tags;
+
+  const RatingResult({
+    required this.stars,
+    required this.tags,
+  });
+}
+
 class RatingDialog extends StatefulWidget {
   const RatingDialog({super.key});
 
@@ -306,7 +321,13 @@ class _RatingDialogState extends State<RatingDialog> {
         Expanded(
           flex: 2,
           child: GestureDetector(
-            onTap: () => Navigator.pop(context, _rating.toDouble()),
+            onTap: () => Navigator.pop(
+              context,
+              RatingResult(
+                stars: _rating,
+                tags: _selectedTags.toList(),
+              ),
+            ),
             child: Container(
               height: 50,
               alignment: Alignment.center,
