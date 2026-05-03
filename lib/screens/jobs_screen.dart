@@ -757,7 +757,7 @@ class _JobsScreenState extends State<JobsScreen> {
       child: Column(
         children: [
           DropdownButtonFormField<JobSortOption>(
-            value: _sort,
+            initialValue: _sort,
             icon: const Icon(Icons.expand_more_rounded, color: _primary),
             decoration: InputDecoration(
               labelText: 'Sorter etter',

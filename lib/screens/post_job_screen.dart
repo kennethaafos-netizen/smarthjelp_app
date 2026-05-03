@@ -396,7 +396,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
         validator: (v) => v == null ? '$label må velges' : null,

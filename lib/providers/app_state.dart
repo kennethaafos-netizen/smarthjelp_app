@@ -103,7 +103,7 @@ class AppNotification {
       type: _notificationTypeFromWire(map['type']?.toString()),
       text: (map['text'] ?? '').toString(),
       createdAt: created,
-      jobId: map['job_id'] == null ? null : map['job_id'].toString(),
+      jobId: map['job_id']?.toString(),
       isRead: map['is_read'] == true,
     );
   }

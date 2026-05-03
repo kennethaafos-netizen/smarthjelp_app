@@ -4,8 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job.dart';
+import '../models/job_filter.dart';
 import '../providers/app_state.dart';
+import '../widgets/active_filter_chips.dart';
+import '../widgets/filter_sheet.dart';
 import '../widgets/job_card.dart';
+import '../widgets/job_search_bar.dart';
 import 'contact_screen.dart';
 import 'faq_screen.dart';
 import 'job_detail_screen.dart';
@@ -37,13 +41,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<Marker> _markers = {};
   bool _isTakingJob = false;
 
-  String? _selectedCategory;
+  // Sprint 6: erstatter den gamle `String? _selectedCategory`. Hele
+  // søk + filter-tilstanden ligger her som ett immutable JobFilter-
+  // objekt. Kategori-chips-raden synker mot filter.categories slik at
+  // bruker kan velge enten via hurtigchip eller via filter-sheet.
+  JobFilter _filter = const JobFilter();
 
   static const Color _primary = Color(0xFF2356E8);
   static const Color _accent = Color(0xFF18B7A6);
   static const Color _bg = Color(0xFFF4F7FC);
   static const Color _textPrimary = Color(0xFF0F1E3A);
   static const Color _textMuted = Color(0xFF6E7A90);
+  static const Color _danger = Color(0xFFDC2626);
 
   static const List<_CategoryOption> _categories = [
     _CategoryOption('Alle', Icons.apps_rounded),
@@ -54,6 +63,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _CategoryOption('Bygg', Icons.construction_outlined),
     _CategoryOption('Transport', Icons.directions_car_filled_outlined),
   ];
+
+  /// Kategori-labels som filter-sheeten kan velge fra. Speiler chip-
+  /// raden, eksklusive "Alle" som er en hurtig-tøm-knapp og ikke en
+  /// reell kategori.
+  List<String> get _filterableCategories => _categories
+      .where((c) => c.label != 'Alle')
+      .map((c) => c.label)
+      .toList();
 
   @override
   void initState() {
@@ -66,8 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final allJobs = appState.smartRankedJobs;
-    final jobs = _applyCategoryFilter(allJobs);
+    final jobs = _applyFilters(appState);
 
     // FASE 3 FIX: aktive oppdrag inkluderer NÅ både reserved og inProgress.
     // Det gjør at worker ser banneret så snart han har reservert, og owner
@@ -92,6 +108,24 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _header(context, jobs, appState.hasUnreadNotifications),
+            const SizedBox(height: 12),
+            // Sprint 6: søkefelt + filter-knapp ligger rett under
+            // headeren. Filter-knappen åpner bottomsheet, søkefeltet
+            // oppdaterer _filter.query umiddelbart.
+            JobSearchBar(
+              query: _filter.query,
+              filterActive: _filter.isActive,
+              activeFilterCount: _activeFilterCount(),
+              onQueryChanged: _onSearchChanged,
+              onFilterTap: _openFilterSheet,
+            ),
+            // Sprint 6: aktive-filter-chips. Returnerer SizedBox.shrink()
+            // når filter er passive, så ingen vertikal støy.
+            ActiveFilterChips(
+              filter: _filter,
+              onChange: _onFilterChanged,
+              onClearAll: _clearFilters,
+            ),
             if (activeJobs.isNotEmpty)
               _activeJobsBanner(activeJobs.length, bannerTargetTab),
             const SizedBox(height: 8),
@@ -124,13 +158,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------------- CATEGORY FILTER ----------------
+  // ---------------- SPRINT 6: FILTER PIPELINE ----------------
 
-  List<Job> _applyCategoryFilter(List<Job> jobs) {
-    if (_selectedCategory == null) return jobs;
-    final needle = _selectedCategory!.toLowerCase();
-    return jobs.where((j) => j.category.toLowerCase() == needle).toList();
+  /// Komponerer base-list + JobFilter.apply. Når filter eller søk er
+  /// aktivt bytter vi fra smartRankedJobs til rå open+!mine-liste,
+  /// slik at viewCount-vekten i smartRankedJobs ikke forvrenger
+  /// "Nærmest" eller "Pris lav→høy".
+  List<Job> _applyFilters(AppState appState) {
+    final List<Job> base;
+    if (_filter.isActive || _filter.hasQuery) {
+      final myId = appState.currentUser.id;
+      base = appState.jobs.where((j) {
+        if (j.status != JobStatus.open) return false;
+        if (j.createdByUserId == myId) return false;
+        return true;
+      }).toList();
+    } else {
+      base = appState.smartRankedJobs;
+    }
+    return _filter.apply(
+      base,
+      distanceMetersFor: appState.jobDistance,
+    );
   }
+
+  /// Antall aktive filter-dimensjoner (for badge på filter-knappen).
+  /// query teller ikke — søket har egen X-knapp i søkefeltet og egen
+  /// chip i active-filter-raden.
+  int _activeFilterCount() {
+    var n = 0;
+    if (_filter.categories.isNotEmpty) n++;
+    if (_filter.minPrice != null || _filter.maxPrice != null) n++;
+    if (_filter.radiusKm != null) n++;
+    if (_filter.sort != JobSortMode.newest) n++;
+    return n;
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {
+      _filter = _filter.copyWith(query: value);
+      _selectedJob = null;
+    });
+  }
+
+  void _onFilterChanged(JobFilter next) {
+    setState(() {
+      _filter = next;
+      _selectedJob = null;
+    });
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _filter = const JobFilter();
+      _selectedJob = null;
+    });
+  }
+
+  Future<void> _openFilterSheet() async {
+    final next = await showJobFilterSheet(
+      context: context,
+      initial: _filter,
+      availableCategories: _filterableCategories,
+    );
+    if (next != null && mounted) {
+      _onFilterChanged(next);
+    }
+  }
+
+  // ---------------- CATEGORY CHIPS (HURTIGVALG) ----------------
 
   Widget _categoryChipsRow() {
     return SizedBox(
@@ -143,15 +239,23 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, index) {
           final opt = _categories[index];
           final isAll = opt.label == 'Alle';
+          // Aktiv tilstand: "Alle" når filter.categories er tom,
+          // ellers en spesifikk chip kun når PRESIS én kategori er
+          // valgt og den matcher denne chippen. Multi-valg fra filter-
+          // sheeten viser ingen aktiv chip her — det er forventet, og
+          // active-filter-chips-raden over reflekterer multi-state.
           final active = isAll
-              ? _selectedCategory == null
-              : _selectedCategory == opt.label;
+              ? _filter.categories.isEmpty
+              : (_filter.categories.length == 1 &&
+                  _filter.categories.contains(opt.label));
           return _categoryChip(
             label: opt.label,
             icon: opt.icon,
             active: active,
             onTap: () => setState(() {
-              _selectedCategory = isAll ? null : opt.label;
+              _filter = isAll
+                  ? _filter.copyWith(categories: const <String>{})
+                  : _filter.copyWith(categories: {opt.label});
               _selectedJob = null;
             }),
           );
@@ -394,12 +498,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _listView(List<Job> jobs) {
     if (jobs.isEmpty) {
+      // Sprint 6: empty state har to varianter. Når filter eller søk
+      // er aktivt får brukeren en "Nullstill"-knapp som rydder alt på
+      // ett klikk — ellers default-meldingen som før.
+      final hasFilter = _filter.isActive || _filter.hasQuery;
       return _emptyState(
-        icon: Icons.travel_explore_outlined,
-        title: _selectedCategory == null
-            ? 'Ingen oppdrag i nærheten'
-            : 'Ingen oppdrag i ${_selectedCategory!}',
-        subtitle: 'Vi varsler deg når noe dukker opp.',
+        icon: hasFilter
+            ? Icons.filter_alt_off_rounded
+            : Icons.travel_explore_outlined,
+        title: hasFilter
+            ? 'Ingen oppdrag matcher filtrene'
+            : 'Ingen oppdrag i nærheten',
+        subtitle: hasFilter
+            ? 'Prøv å nullstille filteret eller endre søket.'
+            : 'Vi varsler deg når noe dukker opp.',
+        onClear: hasFilter ? _clearFilters : null,
       );
     }
 
@@ -427,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onClear,
   }) {
     return Center(
       child: Padding(
@@ -446,6 +560,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
             Text(
               title,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -461,6 +576,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontWeight: FontWeight.w500,
               ),
             ),
+            if (onClear != null) ...[
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: onClear,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  size: 18,
+                  color: _danger,
+                ),
+                label: const Text(
+                  'Nullstill filter',
+                  style: TextStyle(
+                    color: _danger,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: _danger.withOpacity(0.45)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 18, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
