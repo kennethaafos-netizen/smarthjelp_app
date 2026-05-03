@@ -22,7 +22,19 @@ const Color _danger = Color(0xFFDC2626);
 class JobDetailScreen extends StatefulWidget {
   final Job job;
 
-  const JobDetailScreen({super.key, required this.job});
+  /// Sprint 7 nav-fix: settes til true når JobDetailScreen pushes ovenpå
+  /// en ChatScreen for SAMME jobb. Da skal "Åpne chat" pop'e tilbake til
+  /// den eksisterende ChatScreen i stedet for å pushe en ny — bryter
+  /// JobDetail↔Chat-loopen. Default false bevarer eksisterende oppførsel
+  /// for alle andre entry-points (HomeScreen, JobsScreen, NotificationScreen
+  /// osv).
+  final bool fromChat;
+
+  const JobDetailScreen({
+    super.key,
+    required this.job,
+    this.fromChat = false,
+  });
 
   @override
   State<JobDetailScreen> createState() => _JobDetailScreenState();
@@ -1130,14 +1142,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       children.add(_outlinedButton(
         'Åpne chat',
         Icons.chat_bubble_outline_rounded,
-        () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(job: job),
-            ),
-          );
-        },
+        () => _openChat(job),
       ));
     }
 
@@ -1327,6 +1332,25 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         ),
       );
     }
+  }
+
+  /// Sprint 7 nav-fix: brukt av "Åpne chat"-knappen i bottom action area.
+  /// Hvis denne JobDetailScreen ble pushet ovenpå en ChatScreen for samme
+  /// jobb (widget.fromChat=true), pop'er vi bare tilbake til den
+  /// eksisterende ChatScreen i stedet for å pushe en ny — bryter ping-pong-
+  /// loopen JobDetail↔Chat. Ellers pushes en ny ChatScreen med
+  /// fromJobDetail=true så loopen brytes også fra den andre siden.
+  void _openChat(Job job) {
+    if (widget.fromChat) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(job: job, fromJobDetail: true),
+      ),
+    );
   }
 }
 

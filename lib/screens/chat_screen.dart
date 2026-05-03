@@ -24,7 +24,19 @@ const Color _online = Color(0xFF0EA877);
 class ChatScreen extends StatefulWidget {
   final Job job;
 
-  const ChatScreen({super.key, required this.job});
+  /// Sprint 7 nav-fix: settes til true når ChatScreen pushes ovenpå
+  /// en JobDetailScreen for SAMME jobb. Da skal "Gå til oppdrag" pop'e
+  /// tilbake til den eksisterende JobDetail i stedet for å pushe en ny
+  /// — bryter JobDetail↔Chat-loopen. Default false bevarer eksisterende
+  /// oppførsel for alle andre entry-points (ChatList, NotificationScreen,
+  /// AppShell osv).
+  final bool fromJobDetail;
+
+  const ChatScreen({
+    super.key,
+    required this.job,
+    this.fromJobDetail = false,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -188,12 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             tooltip: 'Gå til oppdrag',
             icon: const Icon(Icons.assignment_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => JobDetailScreen(job: liveJob)),
-              );
-            },
+            onPressed: () => _openJobDetail(liveJob),
           ),
           const SizedBox(width: 4),
         ],
@@ -389,9 +396,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job)));
-              },
+              onPressed: () => _openJobDetail(job),
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
               label: const Text('Gå til oppdrag', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
@@ -788,8 +793,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 title: 'Gå til oppdrag',
                 subtitle: 'Åpne detaljer om oppdraget',
                 onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: widget.job)));
+                  Navigator.pop(context); // lukk attachment-sheet
+                  _openJobDetail(widget.job);
                 },
               ),
             ],
@@ -915,5 +920,25 @@ class _ChatScreenState extends State<ChatScreen> {
         );
     _ctrl.clear();
     if (mounted) setState(() { _replyTo = null; _hasText = false; });
+  }
+
+  /// Sprint 7 nav-fix: brukt av alle "Gå til oppdrag"-tap-sites (header,
+  /// summary card, attachment-sheet). Hvis denne ChatScreen ble pushet
+  /// ovenpå en JobDetailScreen for samme jobb (widget.fromJobDetail=true),
+  /// pop'er vi bare tilbake til den eksisterende JobDetail i stedet for å
+  /// pushe en ny — bryter ping-pong-loopen JobDetail↔Chat. Ellers pushes
+  /// en ny JobDetail med fromChat=true så loopen brytes også fra den
+  /// andre siden.
+  void _openJobDetail(Job job) {
+    if (widget.fromJobDetail) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(job: job, fromChat: true),
+      ),
+    );
   }
 }
