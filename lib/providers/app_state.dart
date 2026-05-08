@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -11,6 +12,18 @@ import '../models/user_profile.dart';
 import '../services/supabase_service.dart';
 
 enum TaxTransactionType { income, expense }
+
+/// Sprint 7A: utfall av reserveJob slik at HomeScreen/JobDetail kan
+/// vise ærlige feilmeldinger til bruker (race-tap vs nettverksfeil vs
+/// auth-mangel). Default-suksess = `success`. Alt annet er en
+/// brukervennlig grunn callsite kan oversette til snackbar-tekst.
+enum ReserveResult {
+  success,
+  alreadyTaken,
+  networkError,
+  notAuthenticated,
+  notAllowed,
+}
 
 enum AppNotificationType {
   message,
@@ -103,7 +116,7 @@ class AppNotification {
       type: _notificationTypeFromWire(map['type']?.toString()),
       text: (map['text'] ?? '').toString(),
       createdAt: created,
-      jobId: map['job_id']?.toString(),
+      jobId: map['job_id'] == null ? null : map['job_id'].toString(),
       isRead: map['is_read'] == true,
     );
   }
@@ -156,7 +169,13 @@ class TaxReportSummary {
 class AppState extends ChangeNotifier {
   AppState({SupabaseService? supabaseService})
       : _supabaseService = supabaseService ?? SupabaseService() {
-    _seedUsers();
+    // Sprint 7A: seed-brukere lever bare i debug. I prod/beta starter vi
+    // med tom user-cache, og getUserById henter ekte profiler fra Supabase.
+    // Slik unngår vi "Anders"/"Kenneth" som lekker inn i UI hvis seed-IDer
+    // ved et uhell brukes som createdByUserId.
+    if (kDebugMode) {
+      _seedUsers();
+    }
     _currentUser = _guestProfile();
     _bootstrap();
   }
@@ -627,6 +646,9 @@ class AppState extends ChangeNotifier {
       _setupProfilesSubscription();
       _hydrateProfilesForLoadedJobs();
       _hydrateImagesForLoadedJobs();
+      // Sprint 7A: rydd opp utløpte reservasjoner som ReservedTimer-
+      // widgeten ikke fikk truffet (worker lukket appen før timer kjørte).
+      _sweepExpiredReservations();
     }
   }
 
@@ -654,6 +676,31 @@ class AppState extends ChangeNotifier {
       _setupProfilesSubscription();
       _hydrateProfilesForLoadedJobs();
       _hydrateImagesForLoadedJobs();
+      _sweepExpiredReservations();
+    }
+  }
+
+  /// Sprint 7A: går gjennom alle reserved-jobber hvis reservedUntil er
+  /// passert, og kaller expireReservation for å frigjøre dem. Tidligere
+  /// var dette kun trigget av ReservedTimer-widgeten i JobDetailScreen,
+  /// så hvis worker lukket appen før timeren rant ut, ble jobben låst
+  /// til noen åpnet detalj-skjermen. Nå rydder vi opp ved hver fetch.
+  /// Ikke awaited — fire-and-forget med interne RLS-checks for safety.
+  void _sweepExpiredReservations() {
+    if (!_isAuthenticated) return;
+    final now = DateTime.now();
+    final ids = _jobs
+        .where((j) =>
+            j.status == JobStatus.reserved &&
+            j.reservedUntil != null &&
+            j.reservedUntil!.isBefore(now))
+        .map((j) => j.id)
+        .toList(growable: false);
+    for (final id in ids) {
+      // expireReservation er Future<void> men best-effort — feil logges
+      // internt og stille rollback skjer hvis serversiden allerede har
+      // ryddet. Vi venter ikke på resultat for å unngå å blokkere.
+      expireReservation(id);
     }
   }
 
@@ -925,13 +972,21 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  Future<bool> reserveJob(String id) async {
-    if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
+  /// Sprint 7A: returnerer detaljert resultat slik at HomeScreen/JobDetail
+  /// kan skille mellom "noen andre tok jobben" (ikke en feil) vs.
+  /// "nettverksproblem" (feil). reserveJobAtomic bruker
+  /// `WHERE status='open' AND accepted_by_user_id IS NULL` på serversiden,
+  /// så hvis to brukere prøver samtidig, får én av dem `null` tilbake —
+  /// vi tolker det som `alreadyTaken`. Exception-paths blir `networkError`.
+  Future<ReserveResult> reserveJob(String id) async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) {
+      return ReserveResult.notAuthenticated;
+    }
 
     final job = getJobById(id);
-    if (job == null) return false;
-    if (job.status != JobStatus.open) return false;
-    if (job.createdByUserId == _currentUser.id) return false;
+    if (job == null) return ReserveResult.notAllowed;
+    if (job.status != JobStatus.open) return ReserveResult.alreadyTaken;
+    if (job.createdByUserId == _currentUser.id) return ReserveResult.notAllowed;
 
     final now = DateTime.now();
     Job? saved;
@@ -943,12 +998,14 @@ class AppState extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('reserveJob error: $e');
-      return false;
+      return ReserveResult.networkError;
     }
 
     if (saved == null) {
+      // Race tap: noen andre tok jobben mellom build og insert. Reload
+      // for å oppdatere lokal state slik at UI viser riktig status.
       await reloadJobs();
-      return false;
+      return ReserveResult.alreadyTaken;
     }
 
     _replaceJobLocally(saved);
@@ -964,18 +1021,23 @@ class AppState extends ChangeNotifier {
       jobId: saved.id,
     );
     notifyListeners();
-    return true;
+    return ReserveResult.success;
   }
 
   Future<void> cancelReservation(String id) async {
     await releaseJob(id);
   }
 
-  Future<void> startJob(String id) async {
+  // Sprint 7A: alle status-handlere returnerer nå bool slik at UI kan
+  // vise ærlige feilmeldinger. Default-success = true, false betyr at
+  // _saveJobUpdate feilet (Supabase-error eller saved==null) eller at
+  // gating slo til (job ikke funnet/feil status/ikke-involvert bruker).
+
+  Future<bool> startJob(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.status != JobStatus.reserved) return;
-    if (job.acceptedByUserId != _currentUser.id) return;
+    if (job == null) return false;
+    if (job.status != JobStatus.reserved) return false;
+    if (job.acceptedByUserId != _currentUser.id) return false;
 
     final updated = job.copyWith(
       status: JobStatus.inProgress,
@@ -983,7 +1045,7 @@ class AppState extends ChangeNotifier {
       cancelRequestedByUserId: null,
     );
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage: '${_currentUser.firstName} startet oppdraget.',
       notifyUserId: updated.createdByUserId,
@@ -993,21 +1055,21 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> completeJob(String id) async => completeJobByWorker(id);
+  Future<bool> completeJob(String id) async => completeJobByWorker(id);
 
-  Future<void> completeJobByWorker(String id) async {
+  Future<bool> completeJobByWorker(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.status != JobStatus.inProgress) return;
-    if (job.acceptedByUserId != _currentUser.id) return;
-    if (job.isCompletedByWorker) return;
+    if (job == null) return false;
+    if (job.status != JobStatus.inProgress) return false;
+    if (job.acceptedByUserId != _currentUser.id) return false;
+    if (job.isCompletedByWorker) return false;
 
     final updated = job.copyWith(
       isCompletedByWorker: true,
       cancelRequestedByUserId: null,
     );
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage:
           '${_currentUser.firstName} markerte oppdraget som fullført. Venter på godkjenning fra oppdragsgiver.',
@@ -1018,12 +1080,12 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> approveAndReleasePayment(String id) async {
+  Future<bool> approveAndReleasePayment(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.createdByUserId != _currentUser.id) return;
-    if (job.status != JobStatus.inProgress) return;
-    if (!job.isCompletedByWorker) return;
+    if (job == null) return false;
+    if (job.createdByUserId != _currentUser.id) return false;
+    if (job.status != JobStatus.inProgress) return false;
+    if (!job.isCompletedByWorker) return false;
 
     final updated = job.copyWith(
       status: JobStatus.completed,
@@ -1032,7 +1094,7 @@ class AppState extends ChangeNotifier {
       cancelRequestedByUserId: null,
     );
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage:
           '${_currentUser.firstName} godkjente oppdraget. Klar for utbetaling.',
@@ -1043,13 +1105,13 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> releaseJob(String id) async {
+  Future<bool> releaseJob(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.status != JobStatus.reserved) return;
+    if (job == null) return false;
+    if (job.status != JobStatus.reserved) return false;
     if (job.acceptedByUserId != _currentUser.id &&
         job.createdByUserId != _currentUser.id) {
-      return;
+      return false;
     }
 
     final otherParty = job.acceptedByUserId == _currentUser.id
@@ -1068,7 +1130,7 @@ class AppState extends ChangeNotifier {
       cancelRequestedByUserId: null,
     );
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage: 'Reservasjonen ble opphevet.',
       notifyUserId: otherParty,
@@ -1126,35 +1188,33 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> cancelJob(String id) async {
+  Future<bool> cancelJob(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
+    if (job == null) return false;
 
     final isOwner = job.createdByUserId == _currentUser.id;
     final isWorker = job.acceptedByUserId == _currentUser.id;
-    if (!isOwner && !isWorker) return;
+    if (!isOwner && !isWorker) return false;
 
     if (job.status == JobStatus.open) {
-      if (isOwner) await deleteOwnJob(id);
-      return;
+      if (isOwner) return deleteOwnJob(id);
+      return false;
     }
 
     if (job.status == JobStatus.reserved) {
-      await releaseJob(id);
-      return;
+      return releaseJob(id);
     }
 
     if (job.status == JobStatus.inProgress) {
       if (job.cancelRequestedByUserId != null &&
           job.cancelRequestedByUserId != _currentUser.id) {
-        await approveCancel(id);
-        return;
+        return approveCancel(id);
       }
 
       final otherParty = isOwner ? job.acceptedByUserId : job.createdByUserId;
       final updated = job.copyWith(cancelRequestedByUserId: _currentUser.id);
 
-      await _saveJobUpdate(
+      return _saveJobUpdate(
         updated,
         systemMessage:
             '${_currentUser.firstName} ba om å avbryte oppdraget.',
@@ -1164,17 +1224,18 @@ class AppState extends ChangeNotifier {
             '${_currentUser.firstName} ba om å avbryte «${updated.title}». Godkjenn eller avslå.',
       );
     }
+    return false;
   }
 
-  Future<void> approveCancel(String id) async {
+  Future<bool> approveCancel(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.cancelRequestedByUserId == null) return;
+    if (job == null) return false;
+    if (job.cancelRequestedByUserId == null) return false;
 
     final canApprove = job.createdByUserId == _currentUser.id ||
         job.acceptedByUserId == _currentUser.id;
-    if (!canApprove) return;
-    if (job.cancelRequestedByUserId == _currentUser.id) return;
+    if (!canApprove) return false;
+    if (job.cancelRequestedByUserId == _currentUser.id) return false;
 
     final requesterId = job.cancelRequestedByUserId!;
 
@@ -1190,7 +1251,7 @@ class AppState extends ChangeNotifier {
       cancelRequestedByUserId: null,
     );
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage: 'Avbrytelsen ble godkjent. Oppdraget er åpnet igjen.',
       notifyUserId: requesterId,
@@ -1200,20 +1261,20 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> rejectCancel(String id) async {
+  Future<bool> rejectCancel(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.cancelRequestedByUserId == null) return;
+    if (job == null) return false;
+    if (job.cancelRequestedByUserId == null) return false;
 
     final canReject = job.createdByUserId == _currentUser.id ||
         job.acceptedByUserId == _currentUser.id;
-    if (!canReject) return;
-    if (job.cancelRequestedByUserId == _currentUser.id) return;
+    if (!canReject) return false;
+    if (job.cancelRequestedByUserId == _currentUser.id) return false;
 
     final requesterId = job.cancelRequestedByUserId!;
     final updated = job.copyWith(cancelRequestedByUserId: null);
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage:
           '${_currentUser.firstName} avslo avbrytelsen. Oppdraget fortsetter.',
@@ -1224,15 +1285,15 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> withdrawCancelRequest(String id) async {
+  Future<bool> withdrawCancelRequest(String id) async {
     final job = getJobById(id);
-    if (job == null) return;
-    if (job.cancelRequestedByUserId == null) return;
-    if (job.cancelRequestedByUserId != _currentUser.id) return;
+    if (job == null) return false;
+    if (job.cancelRequestedByUserId == null) return false;
+    if (job.cancelRequestedByUserId != _currentUser.id) return false;
 
     final updated = job.copyWith(cancelRequestedByUserId: null);
 
-    await _saveJobUpdate(
+    return _saveJobUpdate(
       updated,
       systemMessage:
           '${_currentUser.firstName} trakk tilbake forespørselen om å avbryte.',
@@ -1405,16 +1466,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void sendMessage({
+  /// Sprint 7A: returnerer `bool` slik at ChatScreen kan toaste ved feil.
+  /// UI-en forblir optimistisk: meldingen merges lokalt + notifyListeners
+  /// umiddelbart, så bobblen vises før insert er ferdig. Hvis insert
+  /// kaster, ruller vi tilbake (fjerner lokal melding) og returnerer
+  /// false. ChatScreen kan da toaste "Kunne ikke sende ...".
+  Future<bool> sendMessage({
     required String jobId,
     required String text,
     String? replyToMessageId,
     String? replyToText,
     String? imageUrl,
-  }) {
+  }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty && (imageUrl == null || imageUrl.isEmpty)) return;
-    if (_currentUser.id.isEmpty) return;
+    if (trimmed.isEmpty && (imageUrl == null || imageUrl.isEmpty)) {
+      return false;
+    }
+    if (_currentUser.id.isEmpty) return false;
 
     final msg = ChatMessage(
       id: _uuid.v4(),
@@ -1427,18 +1495,14 @@ class AppState extends ChangeNotifier {
       imageUrl: imageUrl,
     );
 
+    // Optimistisk merge: vises i chatten umiddelbart.
     _mergeMessage(msg);
     notifyListeners();
 
-    _supabaseService.insertMessage(msg).then((saved) {
-      _mergeMessage(saved);
-      notifyListeners();
-    }).catchError((e) {
-      debugPrint('sendMessage error: $e');
-      _messages.removeWhere((m) => m.id == msg.id);
-      notifyListeners();
-    });
-
+    // Push-notif til motpart fyrer optimistisk (selv om insertMessage
+    // skulle feile etterpå er det ikke kritisk — mottaker får uansett
+    // bare en advarsel om innkommende melding via realtime når insert
+    // til slutt lander, ev. ikke).
     final job = getJobById(jobId);
     if (job != null) {
       final otherParty = job.createdByUserId == _currentUser.id
@@ -1453,6 +1517,18 @@ class AppState extends ChangeNotifier {
           jobId: jobId,
         );
       }
+    }
+
+    try {
+      final saved = await _supabaseService.insertMessage(msg);
+      _mergeMessage(saved);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('sendMessage error: $e');
+      _messages.removeWhere((m) => m.id == msg.id);
+      notifyListeners();
+      return false;
     }
   }
 
@@ -1476,11 +1552,24 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  void setPushNotifications(bool value) {
+  /// Sprint 7A: optimistisk lokal endring + ærlig retur. Ved upsert-feil
+  /// rulles toggelen tilbake og false returneres slik at SettingsScreen
+  /// kan toaste "Kunne ikke lagre...". Tidligere flyt sa "lagret" selv
+  /// når upsert returnerte null.
+  Future<bool> setPushNotifications(bool value) async {
+    final previous = _currentUser.pushNotificationsEnabled;
     _currentUser = _currentUser.copyWith(pushNotificationsEnabled: value);
     _users[_currentUser.id] = _currentUser;
     notifyListeners();
-    _supabaseService.upsertProfile(_currentUser);
+    final saved = await _supabaseService.upsertProfile(_currentUser);
+    if (saved == null) {
+      _currentUser =
+          _currentUser.copyWith(pushNotificationsEnabled: previous);
+      _users[_currentUser.id] = _currentUser;
+      notifyListeners();
+      return false;
+    }
+    return true;
   }
 
   void updateProfile({
@@ -1921,9 +2010,11 @@ class AppState extends ChangeNotifier {
     super.dispose();
   }
 
+  // Sprint 7A: seed-IDer kun for debug-bygg (kDebugMode). _seedJobId
+  // fjernet sammen med _buildSeedJobs (begge unused). Disse to brukes
+  // av _seedUsers for å mock'e Anders/Kenneth lokalt.
   static const String _seedOwnerId = '00000000-0000-0000-0000-000000000001';
   static const String _seedWorkerId = '00000000-0000-0000-0000-000000000002';
-  static const String _seedJobId = '00000000-0000-0000-0000-000000000010';
 
   void _seedUsers() {
     final now = DateTime.now();
@@ -1957,24 +2048,9 @@ class AppState extends ChangeNotifier {
     _users[worker.id] = worker;
   }
 
-  List<Job> _buildSeedJobs() {
-    return [
-      Job(
-        id: _seedJobId,
-        title: 'Bære ved',
-        description: 'Trenger hjelp med å bære ved inn i boden.',
-        price: 300,
-        category: 'Hage',
-        locationName: 'Skien',
-        lat: 59.2096,
-        lng: 9.6089,
-        createdByUserId: _seedOwnerId,
-        status: JobStatus.open,
-        createdAt: DateTime.now(),
-        viewCount: 0,
-      ),
-    ];
-  }
+  // Sprint 7A: _buildSeedJobs fjernet — var dead code (kalt ingen
+  // steder) og ga unused_element-warning fra analyzer. Seed-jobber er
+  // ikke ønsket i prod-flyt; alle jobber kommer fra Supabase.
 
   double get userLat => _userLat;
   double get userLng => _userLng;

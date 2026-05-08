@@ -270,26 +270,66 @@ class _PostJobScreenState extends State<PostJobScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kunne ikke oppdatere oppdraget.')));
         }
       } else {
+        // Sprint 7A: ærlig bilde-opplasting. Tidligere falt vi tilbake
+        // til lokal fil-sti som imageUrl hvis Supabase storage feilet.
+        // Det ga "Oppdrag publisert"-snackbar selv om andre brukere
+        // aldri kunne se bildet (lokal sti != fungerende URL). Nå
+        // teller vi feilede opplastinger og spør brukeren EKSPLISITT
+        // før vi publiserer uten dem.
         final supabase = SupabaseService();
         final urls = <String>[];
-        final localFallbacks = <String>[];
+        int failedCount = 0;
 
         for (final img in images) {
           try {
             final bytes = await img.readAsBytes();
-            final url = await supabase.uploadJobImage(bytes: bytes, originalFileName: img.name);
+            final url = await supabase.uploadJobImage(
+                bytes: bytes, originalFileName: img.name);
             if (url != null) {
               urls.add(url);
-            } else if (!kIsWeb && img.path.isNotEmpty) {
-              localFallbacks.add(img.path);
+            } else {
+              failedCount++;
             }
           } catch (e) {
             debugPrint('Upload error: $e');
-            if (!kIsWeb && img.path.isNotEmpty) localFallbacks.add(img.path);
+            failedCount++;
           }
         }
 
-        final allUrls = [...urls, ...localFallbacks];
+        // Hvis 1+ bilder feilet, gi bruker valg om å publisere uten
+        // dem eller avbryte og prøve igjen. Skjuler ikke feil bak
+        // lokal-sti-fallback som ga broken images i prod.
+        if (failedCount > 0 && images.isNotEmpty) {
+          if (!mounted) return;
+          final proceed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text('Noen bilder ble ikke lastet opp'),
+              content: Text(
+                '$failedCount av ${images.length} bilder kunne ikke lastes opp '
+                'til SmartHjelp. Vil du publisere oppdraget uten disse bildene?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Avbryt'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Publiser uten disse'),
+                ),
+              ],
+            ),
+          );
+          if (proceed != true) {
+            if (mounted) setState(() => _isSubmitting = false);
+            return;
+          }
+        }
+
         final ok = await appState.addJob(
           title: _title.text.trim(),
           description: _desc.text.trim(),
@@ -298,8 +338,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
           lat: _latForLocation(kommune),
           lng: _lngForLocation(kommune),
           category: category!,
-          imageUrl: allUrls.isNotEmpty ? allUrls.first : null,
-          imageUrls: allUrls,
+          imageUrl: urls.isNotEmpty ? urls.first : null,
+          imageUrls: urls,
         );
 
         if (ok) await appState.reloadJobs();
@@ -396,7 +436,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
-        initialValue: value,
+        value: value,
         items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
         validator: (v) => v == null ? '$label må velges' : null,

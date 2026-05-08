@@ -104,18 +104,24 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     currentUser: currentUser,
                     requester: appState
                         .getUserById(job.cancelRequestedByUserId!),
-                    onApprove: () => _runAction(() async {
-                      await appState.approveCancel(job.id);
-                      _reload(job.id);
-                    }),
-                    onReject: () => _runAction(() async {
-                      await appState.rejectCancel(job.id);
-                      _reload(job.id);
-                    }),
-                    onWithdraw: () => _runAction(() async {
-                      await appState.withdrawCancelRequest(job.id);
-                      _reload(job.id);
-                    }),
+                    onApprove: () => _runActionWithFeedback(
+                      action: () => appState.approveCancel(job.id),
+                      failureMessage:
+                          'Kunne ikke godkjenne avbrytelsen. Prøv igjen.',
+                      onSuccess: () => _reload(job.id),
+                    ),
+                    onReject: () => _runActionWithFeedback(
+                      action: () => appState.rejectCancel(job.id),
+                      failureMessage:
+                          'Kunne ikke avslå avbrytelsen. Prøv igjen.',
+                      onSuccess: () => _reload(job.id),
+                    ),
+                    onWithdraw: () => _runActionWithFeedback(
+                      action: () => appState.withdrawCancelRequest(job.id),
+                      failureMessage:
+                          'Kunne ikke trekke tilbake forespørselen. Prøv igjen.',
+                      onSuccess: () => _reload(job.id),
+                    ),
                   ),
 
                 if (job.status == JobStatus.inProgress &&
@@ -124,10 +130,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     (isOwner || isWorker))
                   _ApprovalBanner(
                     isOwner: isOwner,
-                    onApprove: () => _runAction(() async {
-                      await appState.approveAndReleasePayment(job.id);
-                      _reload(job.id);
-                    }),
+                    onApprove: () => _runActionWithFeedback(
+                      action: () =>
+                          appState.approveAndReleasePayment(job.id),
+                      failureMessage:
+                          'Kunne ikke godkjenne og frigi utbetaling. Prøv igjen.',
+                      onSuccess: () => _reload(job.id),
+                    ),
                   ),
 
                 if (job.status == JobStatus.inProgress &&
@@ -1009,13 +1018,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     }
 
     if (!_isLoading && job.status == JobStatus.open && !isOwner) {
-      children.add(_primaryButton('Ta jobb', Icons.flash_on_rounded, () async {
-        await _runAction(() async {
-          final ok = await appState.reserveJob(job.id);
-          if (!ok) return;
-          _reload(job.id);
-        });
-      }));
+      children.add(_primaryButton(
+        'Ta jobb',
+        Icons.flash_on_rounded,
+        () => _runReserveJob(job),
+      ));
     }
 
     if (!_isLoading && isOwner && job.status == JobStatus.open) {
@@ -1043,12 +1050,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       children.add(_primaryButton(
         'Start jobb',
         Icons.play_arrow_rounded,
-        () async {
-          await _runAction(() async {
-            await appState.startJob(job.id);
-            _reload(job.id);
-          });
-        },
+        () => _runActionWithFeedback(
+          action: () => appState.startJob(job.id),
+          failureMessage: 'Kunne ikke starte oppdraget. Prøv igjen.',
+          onSuccess: () => _reload(job.id),
+        ),
       ));
       children.add(_outlinedButton(
         'Avbryt reservasjon',
@@ -1071,12 +1077,15 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         job.status == JobStatus.inProgress &&
         isWorker &&
         !job.isCompletedByWorker) {
-      children.add(_primaryButton('Fullfør', Icons.check_rounded, () async {
-        await _runAction(() async {
-          await appState.completeJobByWorker(job.id);
-          _reload(job.id);
-        });
-      }));
+      children.add(_primaryButton(
+        'Fullfør',
+        Icons.check_rounded,
+        () => _runActionWithFeedback(
+          action: () => appState.completeJobByWorker(job.id),
+          failureMessage: 'Kunne ikke fullføre oppdraget. Prøv igjen.',
+          onSuccess: () => _reload(job.id),
+        ),
+      ));
     }
 
     if (!_isLoading &&
@@ -1086,12 +1095,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       children.add(_primaryButton(
         'Godkjenn og betal ut',
         Icons.verified_rounded,
-        () async {
-          await _runAction(() async {
-            await appState.approveAndReleasePayment(job.id);
-            _reload(job.id);
-          });
-        },
+        () => _runActionWithFeedback(
+          action: () => appState.approveAndReleasePayment(job.id),
+          failureMessage:
+              'Kunne ikke godkjenne og frigi utbetaling. Prøv igjen.',
+          onSuccess: () => _reload(job.id),
+        ),
       ));
     }
 
@@ -1266,10 +1275,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
 
     if (confirm == true) {
-      await _runAction(() async {
-        await appState.cancelJob(jobId);
-        _reload(jobId);
-      });
+      await _runActionWithFeedback(
+        action: () => appState.cancelJob(jobId),
+        failureMessage: 'Kunne ikke avbryte oppdraget. Prøv igjen.',
+        onSuccess: () => _reload(jobId),
+      );
     }
   }
 
@@ -1320,6 +1330,67 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     setState(() => _isLoading = true);
     await fn();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Sprint 7A: kjører en bool-returnerende AppState-action og toaster
+  /// med `failureMessage` ved false. Ved success kalles onSuccess (typisk
+  /// `_reload`). Erstatter mønsteret der `_runAction` bare kjørte og
+  /// alltid `_reload`-et uten å vite om handlingen faktisk lyktes.
+  Future<void> _runActionWithFeedback({
+    required Future<bool> Function() action,
+    required String failureMessage,
+    VoidCallback? onSuccess,
+  }) async {
+    setState(() => _isLoading = true);
+    bool ok = false;
+    try {
+      ok = await action();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failureMessage)),
+      );
+      return;
+    }
+    onSuccess?.call();
+  }
+
+  /// Sprint 7A: oversetter ReserveResult til brukervennlig tekst.
+  /// `success` returnerer tom string fordi vi ikke toaster på suksess.
+  String _reserveResultMessage(ReserveResult r) {
+    switch (r) {
+      case ReserveResult.success:
+        return '';
+      case ReserveResult.alreadyTaken:
+        return 'Oppdraget ble tatt av en annen.';
+      case ReserveResult.networkError:
+        return 'Nettverksfeil. Sjekk tilkoblingen og prøv igjen.';
+      case ReserveResult.notAuthenticated:
+        return 'Du må være logget inn for å ta oppdrag.';
+      case ReserveResult.notAllowed:
+        return 'Du kan ikke ta dette oppdraget.';
+    }
+  }
+
+  /// Sprint 7A: dedikert helper for reserveJob siden den returnerer
+  /// ReserveResult, ikke bool. Skiller race-feil ("noen andre tok det")
+  /// fra nettverksfeil i toasten — viktig for tillit hos beta-testere.
+  Future<void> _runReserveJob(Job job) async {
+    setState(() => _isLoading = true);
+    final appState = context.read<AppState>();
+    final result = await appState.reserveJob(job.id);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result == ReserveResult.success) {
+      _reload(job.id);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_reserveResultMessage(result))),
+    );
   }
 
   void _reload(String id) {

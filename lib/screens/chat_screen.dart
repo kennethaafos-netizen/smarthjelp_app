@@ -894,15 +894,27 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       if (!mounted) return;
-      context.read<AppState>().sendMessage(
-            jobId: widget.job.id,
-            text: _ctrl.text.trim(),
-            imageUrl: url,
-            replyToMessageId: _replyTo?.id,
-            replyToText: _replyTo?.text,
-          );
+      // Sprint 7A: sendMessage returnerer nå bool. Klare meldingsfeltet
+      // før vi awaiter — UI er fortsatt optimistisk — men hvis insert
+      // til Supabase feiler toaster vi tydelig.
+      final replyToMessageId = _replyTo?.id;
+      final replyToText = _replyTo?.text;
       _ctrl.clear();
       setState(() { _replyTo = null; _hasText = false; });
+      final ok = await context.read<AppState>().sendMessage(
+            jobId: widget.job.id,
+            text: '',
+            imageUrl: url,
+            replyToMessageId: replyToMessageId,
+            replyToText: replyToText,
+          );
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Kunne ikke sende bildemeldingen. Sjekk nett og prøv igjen.'),
+        ));
+      }
     } finally {
       if (mounted) setState(() => _isUploadingImage = false);
     }
@@ -912,14 +924,28 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     final replyTo = _replyTo;
-    context.read<AppState>().sendMessage(
-          jobId: widget.job.id,
-          text: text,
-          replyToMessageId: replyTo?.id,
-          replyToText: replyTo?.text,
-        );
+    // Sprint 7A: optimistisk clear av feltet (UX uendret), men vi
+    // awaiter sendMessage og toaster ved feil i stedet for å la
+    // meldingen forsvinne stille som før.
+    final appState = context.read<AppState>();
     _ctrl.clear();
     if (mounted) setState(() { _replyTo = null; _hasText = false; });
+    appState
+        .sendMessage(
+      jobId: widget.job.id,
+      text: text,
+      replyToMessageId: replyTo?.id,
+      replyToText: replyTo?.text,
+    )
+        .then((ok) {
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Kunne ikke sende meldingen. Sjekk nett og prøv igjen.'),
+        ));
+      }
+    });
   }
 
   /// Sprint 7 nav-fix: brukt av alle "Gå til oppdrag"-tap-sites (header,

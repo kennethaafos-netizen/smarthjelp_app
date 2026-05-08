@@ -126,6 +126,11 @@ class _HomeScreenState extends State<HomeScreen> {
               onChange: _onFilterChanged,
               onClearAll: _clearFilters,
             ),
+            // Sprint 7A: ærlig feilbanner når Supabase-fetch feilet.
+            // Tidligere viste vi bare "Ingen oppdrag" og brukeren trodde
+            // plattformen var tom. Nå tilbyr vi "Prøv igjen" eksplisitt.
+            if (appState.jobsError != null)
+              _jobsErrorBanner(appState.jobsError!),
             if (activeJobs.isNotEmpty)
               _activeJobsBanner(activeJobs.length, bannerTargetTab),
             const SizedBox(height: 8),
@@ -302,6 +307,71 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------- SPRINT 7A: JOBS ERROR BANNER ----------------
+
+  Widget _jobsErrorBanner(String message) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => context.read<AppState>().reloadJobs(),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: _danger.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _danger.withOpacity(0.30)),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off_rounded, color: _danger, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: _textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _danger,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded,
+                          color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Prøv igjen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -620,13 +690,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedJob = null;
     });
 
-    final ok = await appState.reserveJob(job.id);
+    // Sprint 7A: reserveJob returnerer nå ReserveResult slik at vi kan
+    // skille race-feil ("noen andre tok det") fra nettverksfeil. Riktig
+    // toast-tekst gir bruker tillit til at appen ikke "lyver".
+    final result = await appState.reserveJob(job.id);
 
     if (!mounted) return;
 
-    if (!ok) {
+    if (result != ReserveResult.success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kunne ikke ta oppdrag')),
+        SnackBar(content: Text(_reserveResultMessage(result))),
       );
       setState(() => _isTakingJob = false);
       return;
@@ -639,6 +712,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (mounted) setState(() => _isTakingJob = false);
+  }
+
+  /// Sprint 7A: oversetter ReserveResult til brukervennlig tekst.
+  String _reserveResultMessage(ReserveResult r) {
+    switch (r) {
+      case ReserveResult.success:
+        return '';
+      case ReserveResult.alreadyTaken:
+        return 'Oppdraget ble tatt av en annen.';
+      case ReserveResult.networkError:
+        return 'Nettverksfeil. Sjekk tilkoblingen og prøv igjen.';
+      case ReserveResult.notAuthenticated:
+        return 'Du må være logget inn for å ta oppdrag.';
+      case ReserveResult.notAllowed:
+        return 'Du kan ikke ta dette oppdraget.';
+    }
   }
 
   void _openJob(Job job) {

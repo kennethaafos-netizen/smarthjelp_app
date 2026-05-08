@@ -134,26 +134,103 @@ class _JobsScreenState extends State<JobsScreen> {
       ),
       body: appState.isLoadingJobs && !appState.hasLoadedJobs
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _handleRefresh,
-              color: _primary,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-                children: [
-                  _filterSummary(filter, jobs.length),
-                  const SizedBox(height: 14),
-                  if (jobs.isEmpty)
-                    _emptyBox(_emptyTextForFilter(filter))
-                  else
-                    ..._buildJobList(
-                      context,
-                      jobs,
-                      currentUser.id,
-                      filter: filter,
+          : Column(
+              children: [
+                // Sprint 7A: ærlig feilbanner også i filtrert profilvisning.
+                if (appState.jobsError != null)
+                  _jobsErrorBanner(context, appState.jobsError!),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: _primary,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                      children: [
+                        _filterSummary(filter, jobs.length),
+                        const SizedBox(height: 14),
+                        if (jobs.isEmpty)
+                          _emptyBox(_emptyTextForFilter(filter))
+                        else
+                          ..._buildJobList(
+                            context,
+                            jobs,
+                            currentUser.id,
+                            filter: filter,
+                          ),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+                ),
+              ],
             ),
+    );
+  }
+
+  /// Sprint 7A: ærlig feilbanner — vises over listen når
+  /// `appState.jobsError != null`. Lar brukeren tappe for å reloade
+  /// uten å gå ut av skjermen.
+  Widget _jobsErrorBanner(BuildContext context, String message) {
+    const Color danger = Color(0xFFDC2626);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => context.read<AppState>().reloadJobs(),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: danger.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: danger.withOpacity(0.30)),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.cloud_off_rounded,
+                    color: danger, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: _textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: danger,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded,
+                          color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Prøv igjen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -244,6 +321,9 @@ class _JobsScreenState extends State<JobsScreen> {
                   mineCount: mine.length,
                   takenCount: taken.length,
                 ),
+                // Sprint 7A: ærlig feilbanner når jobs-fetch feilet.
+                if (appState.jobsError != null)
+                  _jobsErrorBanner(context, appState.jobsError!),
                 const SizedBox(height: 6),
                 Expanded(
                   child: RefreshIndicator(
@@ -509,7 +589,17 @@ class _JobsScreenState extends State<JobsScreen> {
           Expanded(
             child: FilledButton.icon(
               onPressed: () async {
-                await context.read<AppState>().startJob(job.id);
+                final ok =
+                    await context.read<AppState>().startJob(job.id);
+                if (!context.mounted) return;
+                if (!ok) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('Kunne ikke starte oppdraget. Prøv igjen.'),
+                    ),
+                  );
+                }
               },
               icon: const Icon(Icons.play_arrow_rounded, size: 18),
               label: const Text('Start jobb'),
@@ -578,7 +668,17 @@ class _JobsScreenState extends State<JobsScreen> {
           Expanded(
             child: OutlinedButton.icon(
               onPressed: () async {
-                await context.read<AppState>().cancelJob(job.id);
+                final ok =
+                    await context.read<AppState>().cancelJob(job.id);
+                if (!context.mounted) return;
+                if (!ok) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('Kunne ikke avbryte oppdraget. Prøv igjen.'),
+                    ),
+                  );
+                }
               },
               icon: const Icon(Icons.close_rounded, size: 18),
               label: const Text('Avbryt'),
@@ -628,20 +728,29 @@ class _JobsScreenState extends State<JobsScreen> {
       ),
     );
     if (confirm != true || !context.mounted) return;
-    await context.read<AppState>().releaseJob(job.id);
+    final ok = await context.read<AppState>().releaseJob(job.id);
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kunne ikke oppheve reservasjonen. Prøv igjen.'),
+        ),
+      );
+    }
   }
 
   Future<void> _takeJob(BuildContext context, Job job) async {
     final appState = context.read<AppState>();
-    final ok = await appState.reserveJob(job.id);
+    // Sprint 7A: reserveJob returnerer nå ReserveResult slik at vi kan
+    // skille race-tap fra nettverksfeil. Toaster med en presis
+    // brukervennlig melding i stedet for generisk "Kunne ikke...".
+    final result = await appState.reserveJob(job.id);
 
     if (!context.mounted) return;
 
-    if (!ok) {
+    if (result != ReserveResult.success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kunne ikke reservere oppdraget.'),
-        ),
+        SnackBar(content: Text(_reserveResultMessage(result))),
       );
       return;
     }
@@ -649,6 +758,22 @@ class _JobsScreenState extends State<JobsScreen> {
     final refreshed = appState.getJobById(job.id);
     if (refreshed != null && context.mounted) {
       _openJob(context, refreshed);
+    }
+  }
+
+  /// Sprint 7A: oversetter ReserveResult til brukervennlig tekst.
+  String _reserveResultMessage(ReserveResult r) {
+    switch (r) {
+      case ReserveResult.success:
+        return '';
+      case ReserveResult.alreadyTaken:
+        return 'Oppdraget ble tatt av en annen.';
+      case ReserveResult.networkError:
+        return 'Nettverksfeil. Sjekk tilkoblingen og prøv igjen.';
+      case ReserveResult.notAuthenticated:
+        return 'Du må være logget inn for å ta oppdrag.';
+      case ReserveResult.notAllowed:
+        return 'Du kan ikke ta dette oppdraget.';
     }
   }
 
@@ -757,7 +882,7 @@ class _JobsScreenState extends State<JobsScreen> {
       child: Column(
         children: [
           DropdownButtonFormField<JobSortOption>(
-            initialValue: _sort,
+            value: _sort,
             icon: const Icon(Icons.expand_more_rounded, color: _primary),
             decoration: InputDecoration(
               labelText: 'Sorter etter',

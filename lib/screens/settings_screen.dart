@@ -42,8 +42,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  void _setPush(bool value) {
-    context.read<AppState>().setPushNotifications(value);
+  Future<void> _setPush(bool value) async {
+    // Sprint 7A: setPushNotifications returnerer nå bool. AppState
+    // ruller tilbake lokal toggle hvis upsertProfile feilet (null retur),
+    // og vi toaster slik at brukeren skjønner at endringen ikke ble
+    // lagret. Tidligere så det ut som "lagret" selv ved feil — verdien
+    // gikk tilbake til gammel state ved neste app-start uten forklaring.
+    final ok = await context.read<AppState>().setPushNotifications(value);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'Kunne ikke lagre push-instilling. Sjekk nett og prøv igjen.',
+        ),
+      ));
+    }
   }
 
   Future<void> _setSound(bool value) async {
