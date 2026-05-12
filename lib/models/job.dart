@@ -60,7 +60,7 @@ class Job {
 
   DateTime? get reservedUntil {
     if (reservedAt == null) return null;
-    return reservedAt!.add(const Duration(minutes: 10));
+    return reservedAt!.add(const Duration(minutes: 30));
   }
 
   double get fee => price * 0.10;

@@ -350,9 +350,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
             content: Text('Kunne ikke lagre oppdraget i Supabase. Sjekk tilkobling / innlogging.'),
           ));
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Oppdrag publisert')));
+          // Fase A: bytt snackbar med premium bottom sheet som setter
+          // forventning om respons-tid mens reservasjonen løper. Reduserer
+          // antall "ingen tok jobben"-frustrasjoner ved at owner blir på
+          // telefonen mens oppdragstakere har spørsmål.
           _title.clear(); _desc.clear(); _price.clear(); _postcode.clear();
           setState(() { images = []; category = null; currentIndex = 0; });
+          await _showPublishedSheet();
         }
       }
     } catch (e) {
@@ -363,6 +367,96 @@ class _PostJobScreenState extends State<PostJobScreen> {
     }
 
     if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  Future<void> _showPublishedSheet() async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE4E9F2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Icon(Icons.check_circle_rounded,
+                        color: Color(0xFF0EA877), size: 26),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Oppdraget er publisert',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F1E3A),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Tips: Vær tilgjengelig de neste minuttene. Oppdragstakere '
+                  'kan ha spørsmål før de tar jobben, og rask respons gjør '
+                  'at du får hjelp fortere.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF6E7A90),
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2356E8),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Forstått',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _field(
@@ -436,7 +530,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
         validator: (v) => v == null ? '$label må velges' : null,

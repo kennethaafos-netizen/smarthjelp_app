@@ -5,6 +5,7 @@ import '../models/job.dart';
 import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import '../widgets/rating_dialog.dart';
+import '../widgets/reserved_timer.dart';
 import '../widgets/trust_badges.dart';
 import 'chat_screen.dart';
 import 'image_viewer_screen.dart';
@@ -143,11 +144,22 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     !job.isCompletedByWorker &&
                     (isOwner || isWorker))
                   _PrivacyBanner(
-                    title: 'Oppdraget pågår',
+                    title: 'Oppdraget er avtalt',
                     message: isOwner
-                        ? 'Oppdragstaker jobber med oppdraget nå. Kun dere to ser oppdraget inntil det er fullført.'
-                        : 'Du er i gang. Husk å trykke «Fullfør» når jobben er ferdig — da må oppdragsgiver godkjenne for utbetaling.',
+                        ? 'Oppdraget er avtalt mellom dere. Kun dere to ser oppdraget inntil det er fullført.'
+                        : 'Oppdraget er avtalt. Trykk «Fullfør oppdrag» når du er ferdig — da må oppdragsgiver godkjenne for utbetaling.',
                   ),
+
+                // Sprint 7B: synlig nedtelling for begge parter mens jobben
+                // er reservert. ReservedTimer-widgeten håndterer sin egen
+                // sekund-by-sekund oppdatering og kaller expireReservation
+                // i AppState når tiden går ut. Worker får tydelig CTA om å
+                // bekrefte, owner får forventningsstyring om at andre part
+                // må handle innen tiden.
+                if (job.status == JobStatus.reserved &&
+                    (isOwner || isWorker) &&
+                    job.reservedUntil != null)
+                  _reservedBanner(job, isWorker),
 
                 // Sprint 6 UX: rating-banner ligger ØVERST som premium
                 // CTA rett etter status-bannerene, slik at brukeren ser
@@ -328,7 +340,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       case JobStatus.inProgress:
         bg = _primary.withOpacity(0.10);
         fg = _primary;
-        label = job.isCompletedByWorker ? 'Venter godkjenning' : 'Pågår';
+        label = job.isCompletedByWorker ? 'Venter godkjenning' : 'Avtalt';
         break;
       case JobStatus.completed:
         bg = _safeGreen.withOpacity(0.14);
@@ -350,6 +362,82 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           fontWeight: FontWeight.w800,
           fontSize: 11.5,
         ),
+      ),
+    );
+  }
+
+  // Sprint 7B: premium banner som viser nedtelling for aktiv reservasjon.
+  // Bruker ReservedTimer-widgeten for sekund-by-sekund oppdatering (egen
+  // periodic Timer + auto-expire-callback til AppState). Worker får CTA
+  // om å bekrefte, owner får informativ tekst om at den andre parten må
+  // handle innen tiden. Hele banneret bruker _warning-fargen for å
+  // signalisere "tidssensitiv state" — ReservedTimer-widgeten gjør
+  // tekstfargen rød de siste 60 sekundene.
+  Widget _reservedBanner(Job job, bool isWorker) {
+    final reservedUntil = job.reservedUntil;
+    if (reservedUntil == null) return const SizedBox.shrink();
+
+    final message = isWorker
+        ? 'Oppdraget er reservert. Bekreft oppdraget før tiden går ut.'
+        : 'Oppdraget er reservert. Oppdragstaker må bekrefte før tiden går ut.';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _warning.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _warning.withOpacity(0.32)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: _warning.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.schedule_rounded,
+              color: _warning,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Reservasjon aktiv',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _warning,
+                    fontSize: 13.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: _textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ReservedTimer(
+                  jobId: job.id,
+                  reservedUntil: reservedUntil,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -592,17 +680,17 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       icon = Icons.lock_rounded;
       color = _safeGreen;
       text =
-          'Oppdraget er i gang. Beløpet er reservert av oppdragsgiver og utbetales etter at du har fullført og fått godkjenning.';
+          'Oppdraget er avtalt. Beløpet er reservert av oppdragsgiver og utbetales etter at du har fullført og fått godkjenning.';
     } else if (job.status == JobStatus.reserved) {
       icon = Icons.bookmark_added_outlined;
       color = _warning;
       text =
-          'Oppdraget er reservert til deg. Beløpet reserveres når du starter jobben. Utbetaling skjer etter godkjent fullføring.';
+          'Oppdraget er reservert til deg. Beløpet reserveres når du bekrefter oppdraget. Utbetaling skjer etter godkjent fullføring.';
     } else {
       icon = Icons.hourglass_empty_rounded;
       color = _warning;
       text =
-          'Beløpet reserveres når du starter jobben. Utbetaling skjer etter godkjent fullføring.';
+          'Beløpet reserveres når du bekrefter oppdraget. Utbetaling skjer etter godkjent fullføring.';
     }
 
     return _card(
@@ -830,7 +918,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   // Vises kun når:
   //   * jobben er completed AND isApprovedByOwner (utbetaling klar)
   //   * bruker er involvert (eier eller worker)
-  //   * counterparty finnes
+    //   * counterparty finnes
   //   * bruker har IKKE ratet jobben ennå
   // Ellers returneres SizedBox.shrink() — ingen tomt kort, ingen ekstra
   // mellomrom. Banneret forsvinner uten refresh fordi rateForJob
@@ -1048,11 +1136,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
 
     if (!_isLoading && job.status == JobStatus.reserved && isWorker) {
       children.add(_primaryButton(
-        'Start jobb',
-        Icons.play_arrow_rounded,
+        'Bekreft oppdrag',
+        Icons.check_circle_outline,
         () => _runActionWithFeedback(
           action: () => appState.startJob(job.id),
-          failureMessage: 'Kunne ikke starte oppdraget. Prøv igjen.',
+          failureMessage: 'Kunne ikke bekrefte oppdraget. Prøv igjen.',
           onSuccess: () => _reload(job.id),
         ),
       ));
@@ -1078,7 +1166,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         isWorker &&
         !job.isCompletedByWorker) {
       children.add(_primaryButton(
-        'Fullfør',
+        'Fullfør oppdrag',
         Icons.check_rounded,
         () => _runActionWithFeedback(
           action: () => appState.completeJobByWorker(job.id),

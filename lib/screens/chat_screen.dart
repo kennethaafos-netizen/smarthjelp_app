@@ -81,7 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
     switch (s) {
       case JobStatus.open: return 'Åpen';
       case JobStatus.reserved: return 'Reservert';
-      case JobStatus.inProgress: return 'Pågår';
+      case JobStatus.inProgress: return 'Avtalt';
       case JobStatus.completed: return 'Fullført';
     }
   }

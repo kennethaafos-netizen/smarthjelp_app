@@ -116,7 +116,7 @@ class AppNotification {
       type: _notificationTypeFromWire(map['type']?.toString()),
       text: (map['text'] ?? '').toString(),
       createdAt: created,
-      jobId: map['job_id'] == null ? null : map['job_id'].toString(),
+      jobId: map['job_id']?.toString(),
       isRead: map['is_read'] == true,
     );
   }
@@ -1047,11 +1047,11 @@ class AppState extends ChangeNotifier {
 
     return _saveJobUpdate(
       updated,
-      systemMessage: '${_currentUser.firstName} startet oppdraget.',
+      systemMessage: '${_currentUser.firstName} bekreftet oppdraget.',
       notifyUserId: updated.createdByUserId,
       notificationType: AppNotificationType.started,
       notificationText:
-          '${_currentUser.firstName} startet oppdraget «${updated.title}».',
+          '${_currentUser.firstName} bekreftet oppdraget «${updated.title}».',
     );
   }
 
@@ -1098,7 +1098,7 @@ class AppState extends ChangeNotifier {
       updated,
       systemMessage:
           '${_currentUser.firstName} godkjente oppdraget. Klar for utbetaling.',
-      notifyUserId: updated.acceptedByUserId,
+                notifyUserId: updated.acceptedByUserId,
       notificationType: AppNotificationType.approved,
       notificationText:
           'Oppdraget «${updated.title}» er godkjent. Utbetaling er klar.',

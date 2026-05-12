@@ -726,7 +726,7 @@ class _JobCardState extends State<JobCard> {
       fg = _warning;
     } else if (job.status == JobStatus.inProgress &&
         !job.isCompletedByWorker) {
-      text = 'Pågår';
+      text = 'Avtalt';
       bg = _primary.withOpacity(0.10);
       fg = _primary;
     } else if (job.status == JobStatus.inProgress &&

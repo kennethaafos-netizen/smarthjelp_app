@@ -601,8 +601,8 @@ class _JobsScreenState extends State<JobsScreen> {
                   );
                 }
               },
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('Start jobb'),
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text('Bekreft oppdrag'),
               style: FilledButton.styleFrom(
                 backgroundColor: _primary,
                 foregroundColor: Colors.white,
@@ -648,7 +648,7 @@ class _JobsScreenState extends State<JobsScreen> {
                     },
               icon: const Icon(Icons.check_rounded, size: 18),
               label: Text(
-                alreadyMarkedDone ? 'Venter på godkjenning' : 'Fullfør jobb',
+                alreadyMarkedDone ? 'Venter på godkjenning' : 'Fullfør oppdrag',
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF0EA877),
@@ -882,7 +882,7 @@ class _JobsScreenState extends State<JobsScreen> {
       child: Column(
         children: [
           DropdownButtonFormField<JobSortOption>(
-            value: _sort,
+            initialValue: _sort,
             icon: const Icon(Icons.expand_more_rounded, color: _primary),
             decoration: InputDecoration(
               labelText: 'Sorter etter',
