@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../data/dummy_data.dart';
 import '../providers/app_state.dart';
+import '../services/push_notifications_service.dart';
 
 const Color _primary = Color(0xFF2356E8);
 const Color _bg = Color(0xFFF4F7FC);
@@ -105,6 +106,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    // Sprint 8: ny step 4 (Push-varsler) etter step 3 (account form).
+    // Step 0..2 er stegvis. Step 3 (account) advancer til step 4 etter
+    // at vi har validert at navn/epost/passord er fylt ut. Step 4 trigger
+    // OS-prompt + submitRegister.
     if (step < 3) {
       if (step == 2 && selectedLocation.trim().isEmpty) {
         _showMessage('Velg sted først');
@@ -114,6 +119,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    if (step == 3) {
+      // Validering av account-felter før vi går til push-steget.
+      if (_nameCtrl.text.trim().isEmpty ||
+          _emailCtrl.text.trim().isEmpty ||
+          _passwordCtrl.text.isEmpty) {
+        _showMessage('Fyll inn navn, e-post og passord');
+        return;
+      }
+      if (_passwordCtrl.text.length < 6) {
+        _showMessage('Passordet må være minst 6 tegn');
+        return;
+      }
+      setState(() => step = 4);
+      return;
+    }
+
+    // step == 4: tillat push (OS-prompt) før vi oppretter konto.
+    // Token lagres automatisk etter register (via tryFetchAndSaveIfAuthorized
+    // i AppState.loadCurrentUser). Hvis bruker avslår, går vi videre likevel.
+    await PushNotificationsService.instance.requestPermissionPreAuth();
+    await _submitRegister();
+  }
+
+  Future<void> _skipPushAndRegister() async {
+    // Hopp over OS-prompten — bruker kan re-aktivere fra Settings senere.
     await _submitRegister();
   }
 
@@ -168,9 +198,65 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         return _locationContent();
       case 3:
         return _accountContent();
+      case 4:
+        return _pushPermissionContent();
       default:
         return const SizedBox();
     }
+  }
+
+  Widget _pushPermissionContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 96,
+          height: 96,
+          decoration: BoxDecoration(
+            color: _primary.withOpacity(0.10),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.notifications_active_outlined,
+            size: 46,
+            color: _primary,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Hold deg oppdatert',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: _textPrimary,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Få varsel når noen tar oppdraget ditt, sender deg melding eller godkjenner jobben din. Du kan endre dette i innstillinger senere.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _textMuted,
+            fontWeight: FontWeight.w500,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 18),
+        TextButton(
+          onPressed: _isSubmitting ? null : _skipPushAndRegister,
+          child: const Text(
+            'Hopp over for nå',
+            style: TextStyle(
+              color: _textMuted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _welcomeContent() {
@@ -547,7 +633,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_isLoginMode) {
       label = 'Logg inn';
     } else if (step == 3) {
-      label = 'Opprett konto';
+      label = 'Neste';
+    } else if (step == 4) {
+      label = 'Tillat varsler og opprett konto';
     } else {
       label = 'Neste';
     }

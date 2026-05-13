@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -262,6 +263,27 @@ class SupabaseService {
     } catch (error) {
       debugPrint('SmartHjelp upsertProfile error: $error');
       return null;
+    }
+  }
+
+  /// Sprint 8: oppdaterer kun fcm_token-kolonnen for én bruker. Vi bruker
+  /// UPDATE og ikke upsertProfile fordi:
+  ///   1. fcm_token er ikke i UserProfile-modellen (push er backend-only)
+  ///   2. Vi vil ikke risikere å overskrive andre profilfelt med stale state
+  /// Returnerer true ved suksess, false ellers.
+  Future<bool> updateFcmToken({
+    required String userId,
+    required String? token,
+  }) async {
+    try {
+      await _client
+          .from('profiles')
+          .update({'fcm_token': token})
+          .eq('id', userId);
+      return true;
+    } catch (error) {
+      debugPrint('SmartHjelp updateFcmToken error: $error');
+      return false;
     }
   }
 

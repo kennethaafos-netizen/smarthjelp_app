@@ -7,9 +7,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'providers/app_state.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/push_notifications_service.dart';
 import 'widgets/app_shell.dart';
 import 'firebase_options.dart';
 
+/// Top-level handler kreves av FCM for å motta push når app er
+/// terminert. Må være en top-level eller static funksjon.
+/// Holdes så enkel som mulig — selve route-håndteringen skjer i
+/// PushNotificationsService når brukeren faktisk åpner appen.
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -23,11 +29,11 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  FirebaseMessaging.onBackgroundMessage(
-    _firebaseMessagingBackgroundHandler,
-  );
-
-  await FirebaseMessaging.instance.requestPermission();
+  // Sprint 8: bakgrunns-handler må registreres FØR runApp.
+  // requestPermission() flyttes til onboarding (PushNotificationsService),
+  // slik at OS-prompten kommer som del av en forklart UX-flyt i stedet for
+  // et tilfeldig pop-up ved første app-start.
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   await Supabase.initialize(
     url: 'https://yuzjubqzngsjzwfrucxg.supabase.co',
@@ -47,6 +53,10 @@ class SmartHjelpApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'SmartHjelp',
+        // Sprint 8: gjør Navigator-stacken tilgjengelig fra
+        // PushNotificationsService slik at vi kan rute fra push-tap
+        // utenfor BuildContext.
+        navigatorKey: PushNotificationsService.instance.navigatorKey,
         theme: ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(

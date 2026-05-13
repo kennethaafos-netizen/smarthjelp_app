@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import '../models/job.dart';
 import '../models/user_profile.dart';
+import '../services/push_notifications_service.dart';
 import '../services/supabase_service.dart';
 
 enum TaxTransactionType { income, expense }
@@ -116,7 +117,7 @@ class AppNotification {
       type: _notificationTypeFromWire(map['type']?.toString()),
       text: (map['text'] ?? '').toString(),
       createdAt: created,
-      jobId: map['job_id']?.toString(),
+      jobId: map['job_id'] == null ? null : map['job_id'].toString(),
       isRead: map['is_read'] == true,
     );
   }
@@ -177,6 +178,10 @@ class AppState extends ChangeNotifier {
       _seedUsers();
     }
     _currentUser = _guestProfile();
+    // Sprint 8: init push-service før bootstrap så listeners (foreground,
+    // background-tap, cold-start) er aktive før første auth-flyt kan
+    // levere noe push. init er idempotent.
+    PushNotificationsService.instance.init(this);
     _bootstrap();
   }
 
@@ -419,6 +424,9 @@ class AppState extends ChangeNotifier {
     _isAuthenticated = true;
     _isAuthLoading = false;
     notifyListeners();
+    // Sprint 8: hvis brukeren tidligere har tillatt push (eller nettopp
+    // tillot via onboarding), hent FCM-token og lagre i profiles. Idempotent.
+    PushNotificationsService.instance.tryFetchAndSaveIfAuthorized();
   }
 
   Future<String?> login({
@@ -493,6 +501,14 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     _notifReloadTimer?.cancel();
     _notifReloadTimer = null;
+    // Sprint 8: rydd push-token i profiles + slett lokal token før vi
+    // logger ut, slik at gammel device ikke fortsatt får push for denne
+    // brukeren. Best-effort — feil her skal ikke blokkere logout.
+    try {
+      await PushNotificationsService.instance.clearOnLogout();
+    } catch (e) {
+      debugPrint('PushNotif clearOnLogout error: $e');
+    }
     await _teardownAllRealtime();
     try {
       await _client.auth.signOut();
@@ -1098,7 +1114,7 @@ class AppState extends ChangeNotifier {
       updated,
       systemMessage:
           '${_currentUser.firstName} godkjente oppdraget. Klar for utbetaling.',
-                notifyUserId: updated.acceptedByUserId,
+      notifyUserId: updated.acceptedByUserId,
       notificationType: AppNotificationType.approved,
       notificationText:
           'Oppdraget «${updated.title}» er godkjent. Utbetaling er klar.',
@@ -1550,6 +1566,30 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  /// Sprint 8: lagrer (eller nuller) FCM device-token i profiles.fcm_token.
+  /// Kalles av PushNotificationsService når token hentes/oppdateres, og
+  /// med null ved logout. Ingen UI-feedback — push er backend-arbeid og
+  /// brukeren skal ikke se feil med mindre noe i flyt-en eksplisitt
+  /// avhenger av token (som er sjelden i UI). Vi merker bare currentUser
+  /// lokalt for konsistens, men bærer ikke fcm_token i UserProfile-modellen
+  /// fordi den ikke er UI-relevant — vi sender det rett til Supabase.
+  Future<bool> setFcmToken(String? token) async {
+    if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
+    try {
+      final ok = await _supabaseService.updateFcmToken(
+        userId: _currentUser.id,
+        token: token,
+      );
+      if (!ok) {
+        debugPrint('setFcmToken: update returnerte false');
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('setFcmToken error: $e');
+      return false;
+    }
   }
 
   /// Sprint 7A: optimistisk lokal endring + ærlig retur. Ved upsert-feil
