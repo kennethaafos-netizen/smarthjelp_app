@@ -20,10 +20,11 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services") version("4.3.15") apply false
-    // END: FlutterFire Configuration
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // Sprint 8: Firebase Google Services-pluginen deklareres her (med versjon)
+    // og brukes (uten versjon) i app/build.gradle.kts. Ikke dupliser i
+    // root build.gradle.kts — det vil forårsake versjonskonflikt.
+    id("com.google.gms.google-services") version "4.4.1" apply false
 }
 
 include(":app")

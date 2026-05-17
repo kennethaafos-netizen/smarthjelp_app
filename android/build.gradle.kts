@@ -1,26 +1,38 @@
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
+// Root build.gradle.kts — Flutter Android-standard.
+//
+// VIKTIG (Sprint 8 ryddejobb): denne filen skal IKKE inneholde:
+//   - pluginManagement { ... }                  (hører i settings.gradle.kts)
+//   - plugins { ... } med versjoner             (hører i settings.gradle.kts)
+//   - dependencyResolutionManagement { ... }    (hører i settings.gradle.kts)
+//   - rootProject.name                          (hører i settings.gradle.kts)
+//   - include(":app")                           (hører i settings.gradle.kts)
+//
+// Hvis du legger plugin-versjoner her vil de kollidere med versjonene
+// i settings.gradle.kts og gi feil av typen:
+//   "plugin is already on classpath with different version"
 
-plugins {
-    id("com.android.application") version "8.2.1" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
-
-    // 🔥 Firebase Google Services
-    id("com.google.gms.google-services") version "4.4.1" apply false
-}
-
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+allprojects {
     repositories {
         google()
         mavenCentral()
     }
 }
 
-rootProject.name = "smarthjelp_app"
-include(":app")
+// Flutter-konvensjon: legg build/-mappen ett nivå opp så Android Studio
+// og Flutter CLI deler samme build-output. Gjør 'flutter clean' og
+// Android Studio-build kompatible.
+val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
+rootProject.layout.buildDirectory.value(newBuildDir)
+
+subprojects {
+    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
+    project.layout.buildDirectory.value(newSubprojectBuildDir)
+}
+
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register<Delete>("clean") {
+    delete(rootProject.layout.buildDirectory)
+}

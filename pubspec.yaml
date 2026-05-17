@@ -30,7 +30,7 @@ dependencies:
   image_picker: ^1.0.7
 
   # 🔥 FIX – WEB/PC FILE PICKER
-  file_picker: ^6.1.1
+  file_picker: ^8.1.0
 
   # STORAGE / PREFS
   shared_preferences: ^2.5.5

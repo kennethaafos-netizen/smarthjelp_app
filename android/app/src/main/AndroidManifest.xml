@@ -13,6 +13,14 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="high_importance_channel"/>
 
+        <!-- 🗺️ Google Maps API key — leses fra android/local.properties via
+             manifestPlaceholders i app/build.gradle.kts. local.properties er
+             gitignored slik at nøkkelen ikke commites. Hvis MAPS_API_KEY
+             ikke er satt, vises Maps med vannmerke "For development purposes". -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
