@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../data/dummy_data.dart';
 import '../models/job.dart';
+import '../models/job_filter.dart';
 import '../providers/app_state.dart';
+import '../widgets/active_filter_chips.dart';
+import '../widgets/filter_sheet.dart';
 import '../widgets/job_card.dart';
+import '../widgets/job_search_bar.dart';
 import 'job_detail_screen.dart';
 import 'post_job_screen.dart';
 
@@ -46,13 +51,58 @@ class JobsScreen extends StatefulWidget {
 }
 
 class _JobsScreenState extends State<JobsScreen> {
+  // _sort beholdes for «Mine»/«Tatt»-fanene og den fokuserte
+  // profilvisningen (_buildFilteredView) som fortsatt bruker _sortedJobs.
   JobSortOption _sort = JobSortOption.newest;
-  bool _showOnlyOpen = false;
   late JobsTab _activeTab = widget.initialTab ?? JobsTab.all;
   bool _isRefreshing = false;
 
+  // Sprint 8: «Alle oppdrag»-fanen bruker nå samme JobFilter-system som
+  // HomeScreen (søk + kategori + pris + radius + sortering) i stedet for
+  // den gamle sort-dropdownen. AppState er fortsatt source of truth for
+  // selve job-listen — _filter er ren UI-state, identisk mønster som
+  // HomeScreen._filter.
+  JobFilter _filter = const JobFilter();
+
   bool get _isFilteredView =>
       widget.initialFilter != null && widget.initialFilter != JobsFilter.all;
+
+  // Kategori-labels filter-sheeten kan velge fra. Bruker samme kCategories
+  // som post_job_screen, slik at filter-kategoriene matcher det brukere
+  // faktisk kan publisere under.
+  List<String> get _filterableCategories => kCategories;
+
+  void _onSearchChanged(String value) {
+    setState(() => _filter = _filter.copyWith(query: value));
+  }
+
+  void _onFilterChanged(JobFilter next) {
+    setState(() => _filter = next);
+  }
+
+  void _clearFilters() {
+    setState(() => _filter = const JobFilter());
+  }
+
+  Future<void> _openFilterSheet() async {
+    final next = await showJobFilterSheet(
+      context: context,
+      initial: _filter,
+      availableCategories: _filterableCategories,
+    );
+    if (next != null && mounted) {
+      _onFilterChanged(next);
+    }
+  }
+
+  int _activeFilterCount() {
+    var n = 0;
+    if (_filter.categories.isNotEmpty) n++;
+    if (_filter.minPrice != null || _filter.maxPrice != null) n++;
+    if (_filter.radiusKm != null) n++;
+    if (_filter.sort != JobSortMode.newest) n++;
+    return n;
+  }
 
   @override
   void initState() {
@@ -242,12 +292,17 @@ class _JobsScreenState extends State<JobsScreen> {
     // Reservert/pågående/fullført hører hjemme under «Mine» / «Tatt»,
     // ikke i offentlig feed. Involverte brukere ser sine aktive jobber
     // fortsatt under sin egen fane.
-    final all = _sortedJobs(
-      appState.allJobsSortedByNewest.where((job) {
-        if (job.status != JobStatus.open) return false;
-        if (_showOnlyOpen && job.status != JobStatus.open) return false;
-        return true;
-      }).toList(),
+    //
+    // Sprint 8: bruker nå JobFilter.apply (søk + kategori + pris + radius +
+    // sortering) — samme system som HomeScreen — i stedet for den gamle
+    // sort-dropdownen. distanceMetersFor injiseres fra AppState slik at
+    // «Nærmest»-sortering og radius-filter fungerer.
+    final openJobs = appState.allJobsSortedByNewest
+        .where((job) => job.status == JobStatus.open)
+        .toList();
+    final all = _filter.apply(
+      openJobs,
+      distanceMetersFor: appState.jobDistance,
     );
 
     final mine = _sortedJobs(appState.postedByCurrentUser);
@@ -332,9 +387,23 @@ class _JobsScreenState extends State<JobsScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                       children: [
+                        // Sprint 8: søk + filter kun på «Alle oppdrag»-fanen.
+                        // «Mine»/«Tatt» er personlige lister der kategori/
+                        // pris-filter gir lite mening — de vises uten bar.
                         if (_activeTab == JobsTab.all) ...[
-                          _topControls(context),
-                          const SizedBox(height: 18),
+                          JobSearchBar(
+                            query: _filter.query,
+                            filterActive: _filter.isActive,
+                            activeFilterCount: _activeFilterCount(),
+                            onQueryChanged: _onSearchChanged,
+                            onFilterTap: _openFilterSheet,
+                          ),
+                          ActiveFilterChips(
+                            filter: _filter,
+                            onChange: _onFilterChanged,
+                            onClearAll: _clearFilters,
+                          ),
+                          const SizedBox(height: 12),
                         ],
                         if (visibleJobs.isEmpty)
                           _emptyBox(emptyText)
@@ -867,89 +936,6 @@ class _JobsScreenState extends State<JobsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _topControls(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE4E9F2)),
-      ),
-      child: Column(
-        children: [
-          DropdownButtonFormField<JobSortOption>(
-            initialValue: _sort,
-            icon: const Icon(Icons.expand_more_rounded, color: _primary),
-            decoration: InputDecoration(
-              labelText: 'Sorter etter',
-              labelStyle: const TextStyle(
-                color: _textMuted,
-                fontWeight: FontWeight.w600,
-              ),
-              filled: true,
-              fillColor: _bg,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: _primary, width: 1.4),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            ),
-            items: const [
-              DropdownMenuItem(
-                value: JobSortOption.newest,
-                child: Text('Nyeste først'),
-              ),
-              DropdownMenuItem(
-                value: JobSortOption.oldest,
-                child: Text('Eldste først'),
-              ),
-              DropdownMenuItem(
-                value: JobSortOption.priceHighLow,
-                child: Text('Pris høy → lav'),
-              ),
-              DropdownMenuItem(
-                value: JobSortOption.priceLowHigh,
-                child: Text('Pris lav → høy'),
-              ),
-              DropdownMenuItem(
-                value: JobSortOption.popular,
-                child: Text('Mest vist'),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() => _sort = value);
-            },
-          ),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            activeColor: _primary,
-            title: const Text(
-              'Vis bare åpne oppdrag',
-              style: TextStyle(
-                color: _textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            value: _showOnlyOpen,
-            onChanged: (value) {
-              setState(() => _showOnlyOpen = value);
-            },
-          ),
-        ],
       ),
     );
   }

@@ -223,6 +223,12 @@ class _PostJobScreenState extends State<PostJobScreen> {
   }
 
   Future<void> _submit() async {
+    // Sprint 8 fix: lukk tastaturet FØR vi viser bottom sheet / snackbar /
+    // dialog. Prisfeltet (talltastatur) beholdt fokus tidligere, så
+    // publiserings-bekreftelsen kom bak/over tastaturet. unfocus() her
+    // dekker alle exit-veier under (suksess-sheet, feil-snackbar, dialog).
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) return;
     if (category == null) return;
 
@@ -530,7 +536,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: DropdownButtonFormField<String>(
-        initialValue: value,
+        value: value,
         items: list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
         validator: (v) => v == null ? '$label må velges' : null,
