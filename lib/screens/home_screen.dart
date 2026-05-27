@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/dummy_data.dart';
 import '../models/job.dart';
 import '../models/job_filter.dart';
 import '../providers/app_state.dart';
@@ -54,15 +55,40 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color _textMuted = Color(0xFF6E7A90);
   static const Color _danger = Color(0xFFDC2626);
 
-  static const List<_CategoryOption> _categories = [
-    _CategoryOption('Alle', Icons.apps_rounded),
-    _CategoryOption('Flytting', Icons.local_shipping_outlined),
-    _CategoryOption('Rengjøring', Icons.cleaning_services_outlined),
-    _CategoryOption('Hage', Icons.grass_outlined),
-    _CategoryOption('Montering', Icons.handyman_outlined),
-    _CategoryOption('Bygg', Icons.construction_outlined),
-    _CategoryOption('Transport', Icons.directions_car_filled_outlined),
+  // Kategori-hurtigchips speiler nå kCategories (samme kilde som
+  // PostJobScreen og JobsScreen-filteret), med "Alle" som hurtig-tøm-chip
+  // først. Tidligere brukte HomeScreen egne labels ('Rengjøring', 'Bygg')
+  // som ikke fantes i kCategories, så de chipsene ga alltid 0 treff.
+  // Bygges én gang via late final.
+  late final List<_CategoryOption> _categories = [
+    const _CategoryOption('Alle', Icons.apps_rounded),
+    for (final c in kCategories) _CategoryOption(c, _iconForCategory(c)),
   ];
+
+  // Ikon per kategori. Faller tilbake til et nøytralt ikon hvis kCategories
+  // utvides senere, slik at nye kategorier automatisk dukker opp som chips.
+  static IconData _iconForCategory(String label) {
+    switch (label) {
+      case 'Hage':
+        return Icons.grass_outlined;
+      case 'Flytting':
+        return Icons.local_shipping_outlined;
+      case 'Montering':
+        return Icons.handyman_outlined;
+      case 'Renhold':
+        return Icons.cleaning_services_outlined;
+      case 'Transport':
+        return Icons.directions_car_filled_outlined;
+      case 'Maling':
+        return Icons.format_paint_outlined;
+      case 'Vinter':
+        return Icons.ac_unit_outlined;
+      case 'Annet':
+        return Icons.more_horiz_rounded;
+      default:
+        return Icons.more_horiz_rounded;
+    }
+  }
 
   /// Kategori-labels som filter-sheeten kan velge fra. Speiler chip-
   /// raden, eksklusive "Alle" som er en hurtig-tøm-knapp og ikke en
