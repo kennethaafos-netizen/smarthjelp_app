@@ -255,6 +255,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (job.isUrgent) ...[
+            _urgentPill(),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               Expanded(
@@ -315,6 +319,34 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Haste-indikator. Vises kun for oppdrag med kort reservasjonsvindu
+  // (job.isUrgent == reservationMinutes <= 10).
+  Widget _urgentPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _warning.withValues(alpha: 0.32)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bolt_rounded, size: 14, color: _warning),
+          SizedBox(width: 4),
+          Text(
+            'Haster · 10 min reservasjon',
+            style: TextStyle(
+              color: _warning,
+              fontWeight: FontWeight.w800,
+              fontSize: 11.5,
+            ),
           ),
         ],
       ),
@@ -411,9 +443,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Reservasjon aktiv',
-                  style: TextStyle(
+                Text(
+                  job.isUrgent ? 'Reservasjon aktiv · haste' : 'Reservasjon aktiv',
+                  style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     color: _warning,
                     fontSize: 13.5,

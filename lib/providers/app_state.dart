@@ -881,8 +881,13 @@ class AppState extends ChangeNotifier {
     required double lng,
     String? imageUrl,
     List<String>? imageUrls,
+    int reservationMinutes = 30,
   }) async {
     if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
+
+    // MVP: kun 10 (haste) eller 30 (vanlig). Klemmes defensivt så DB-
+    // CHECK-constrainten aldri brytes uansett kallsted.
+    final safeReservationMinutes = reservationMinutes == 10 ? 10 : 30;
 
     final draft = Job(
       id: _uuid.v4(),
@@ -898,6 +903,7 @@ class AppState extends ChangeNotifier {
       status: JobStatus.open,
       createdAt: DateTime.now(),
       viewCount: 0,
+      reservationMinutes: safeReservationMinutes,
     );
 
     Job saved;
@@ -938,11 +944,15 @@ class AppState extends ChangeNotifier {
     required String locationName,
     required double lat,
     required double lng,
+    int reservationMinutes = 30,
   }) async {
     final job = getJobById(jobId);
     if (job == null) return false;
     if (job.createdByUserId != _currentUser.id) return false;
     if (job.status != JobStatus.open) return false;
+
+    // MVP: kun 10 (haste) eller 30 (vanlig).
+    final safeReservationMinutes = reservationMinutes == 10 ? 10 : 30;
 
     final updated = job.copyWith(
       title: title,
@@ -952,6 +962,7 @@ class AppState extends ChangeNotifier {
       locationName: locationName,
       lat: lat,
       lng: lng,
+      reservationMinutes: safeReservationMinutes,
     );
 
     try {

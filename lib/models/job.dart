@@ -29,6 +29,11 @@ class Job {
   final bool isCompletedByWorker;
   final bool isApprovedByOwner;
   final String? cancelRequestedByUserId;
+  // Hvor mange minutter oppdraget er låst til den som reserverer det.
+  // Eies av oppdragsgiver ved publisering. MVP: kun 10 (haste) eller 30
+  // (vanlig). Non-null med default 30 → eksisterende jobber og rader uten
+  // kolonnen oppfører seg som før.
+  final int reservationMinutes;
 
   const Job({
     required this.id,
@@ -54,14 +59,18 @@ class Job {
     this.isCompletedByWorker = false,
     this.isApprovedByOwner = false,
     this.cancelRequestedByUserId,
+    this.reservationMinutes = 30,
   });
 
   static const _sentinel = Object();
 
   DateTime? get reservedUntil {
     if (reservedAt == null) return null;
-    return reservedAt!.add(const Duration(minutes: 30));
+    return reservedAt!.add(Duration(minutes: reservationMinutes));
   }
+
+  // Haste-oppdrag har kort reservasjonsvindu. MVP: 10 = haste, 30 = vanlig.
+  bool get isUrgent => reservationMinutes <= 10;
 
   double get fee => price * 0.10;
   double get platformFee => fee;
@@ -108,6 +117,7 @@ class Job {
     bool? isCompletedByWorker,
     bool? isApprovedByOwner,
     Object? cancelRequestedByUserId = _sentinel,
+    int? reservationMinutes,
   }) {
     return Job(
       id: id ?? this.id,
@@ -143,6 +153,7 @@ class Job {
       cancelRequestedByUserId: cancelRequestedByUserId == _sentinel
           ? this.cancelRequestedByUserId
           : cancelRequestedByUserId as String?,
+      reservationMinutes: reservationMinutes ?? this.reservationMinutes,
     );
   }
 
@@ -172,6 +183,7 @@ class Job {
       isApprovedByOwner: _toBool(map['is_approved_by_owner']),
       cancelRequestedByUserId:
           _toNullableString(map['cancel_requested_by_user_id']),
+      reservationMinutes: _toReservationMinutes(map['reservation_minutes']),
     );
   }
 
@@ -204,6 +216,7 @@ class Job {
       'is_completed_by_worker': isCompletedByWorker,
       'is_approved_by_owner': isApprovedByOwner,
       'cancel_requested_by_user_id': cancelRequestedByUserId,
+      'reservation_minutes': reservationMinutes,
     };
   }
 
@@ -231,6 +244,7 @@ class Job {
       'is_completed_by_worker': isCompletedByWorker,
       'is_approved_by_owner': isApprovedByOwner,
       'cancel_requested_by_user_id': cancelRequestedByUserId,
+      'reservation_minutes': reservationMinutes,
     };
   }
 
@@ -267,6 +281,14 @@ class Job {
     if (value is double) return value.round();
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  // MVP-policy: kun 10 (haste) eller 30 (vanlig). Null/manglende kolonne
+  // (gamle rader, pre-migrasjon) eller uventede verdier faller tilbake til
+  // 30, slik at eksisterende jobber oppfører seg nøyaktig som før.
+  static int _toReservationMinutes(dynamic value) {
+    final parsed = _toInt(value);
+    return parsed == 10 ? 10 : 30;
   }
 
   static double _toDouble(dynamic value) {

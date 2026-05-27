@@ -31,6 +31,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
   bool _isSubmitting = false;
   String? _editKommune;
 
+  // Reservasjonsvindu valgt av oppdragsgiver. MVP: 30 (vanlig, default)
+  // eller 10 (haste). Styrer kun hvor lenge oppdraget er låst etter at
+  // noen tar det — ikke hvor raskt jobben må gjøres.
+  int _reservationMinutes = 30;
+
   bool get _isEditing => widget.existingJob != null;
 
   @override
@@ -43,6 +48,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
       _price.text = job.price.toString();
       category = job.category;
       _editKommune = kLocations.contains(job.locationName) ? job.locationName : kLocations.first;
+      _reservationMinutes = job.reservationMinutes == 10 ? 10 : 30;
     }
   }
 
@@ -117,6 +123,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
               _dropdown(kLocations, _editKommune, 'Kommune', (v) => setState(() => _editKommune = v))
             else
               _postcodeField(),
+            const SizedBox(height: 16),
+            _reservationSelector(),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
@@ -267,6 +275,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           locationName: kommune,
           lat: _latForLocation(kommune),
           lng: _lngForLocation(kommune),
+          reservationMinutes: _reservationMinutes,
         );
         if (!mounted) return;
         if (ok) {
@@ -346,6 +355,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
           category: category!,
           imageUrl: urls.isNotEmpty ? urls.first : null,
           imageUrls: urls,
+          reservationMinutes: _reservationMinutes,
         );
 
         if (ok) await appState.reloadJobs();
@@ -462,6 +472,119 @@ class _PostJobScreenState extends State<PostJobScreen> {
           ),
         );
       },
+    );
+  }
+
+  // Oppdragsgiver velger reservasjonsvindu. MVP: kun to valg.
+  // Presiserer at dette er låsetid, ikke en frist for å fullføre jobben.
+  Widget _reservationSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'Reservasjonstid',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F1E3A),
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _reservationOption(
+                minutes: 30,
+                title: 'Vanlig',
+                subtitle: '30 min reservasjon',
+                icon: Icons.schedule_rounded,
+                accent: const Color(0xFF2356E8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _reservationOption(
+                minutes: 10,
+                title: 'Haste',
+                subtitle: '10 min reservasjon',
+                icon: Icons.bolt_rounded,
+                accent: const Color(0xFFE08A00),
+              ),
+            ),
+          ],
+        ),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 8),
+          child: Text(
+            'Styrer hvor lenge oppdraget er låst til den som tar det — ikke hvor raskt jobben må gjøres.',
+            style: TextStyle(
+              color: Color(0xFF6E7A90),
+              fontSize: 12,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _reservationOption({
+    required int minutes,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accent,
+  }) {
+    final bool selected = _reservationMinutes == minutes;
+    return GestureDetector(
+      onTap: () => setState(() => _reservationMinutes = minutes),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? accent.withValues(alpha: 0.10) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? accent : const Color(0xFFE4E9F2),
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: accent),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                    color: selected ? accent : const Color(0xFF0F1E3A),
+                  ),
+                ),
+                const Spacer(),
+                if (selected)
+                  Icon(Icons.check_circle_rounded, size: 16, color: accent),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                color: Color(0xFF6E7A90),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

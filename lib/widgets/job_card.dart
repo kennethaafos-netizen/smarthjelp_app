@@ -144,6 +144,10 @@ class _JobCardState extends State<JobCard> {
                           icon: Icons.schedule_rounded,
                           filled: true,
                         ),
+                        if (job.isUrgent) ...[
+                          const SizedBox(width: 8),
+                          _hasteChip(),
+                        ],
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -806,6 +810,34 @@ class _JobCardState extends State<JobCard> {
               fontSize: 11,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Haste-chip: vises kun for oppdrag med kort reservasjonsvindu
+  // (job.isUrgent). Bruker warning-fargen for å skille seg fra de
+  // primær-fargede info-chipsene.
+  Widget _hasteChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bolt_rounded, size: 12, color: _warning),
+          SizedBox(width: 4),
+          Text(
+            'Haste',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: _warning,
             ),
           ),
         ],
