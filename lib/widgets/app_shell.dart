@@ -43,27 +43,23 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  Widget _buildScreen() {
-    switch (_index) {
-      case 0:
-        return HomeScreen(
-          onNavigate: _onNavigate,
-          onNavigateToJobsTab: _onNavigateToJobsTab,
-        );
-      case 1:
-        return JobsScreen(key: _jobsKey, initialTab: _pendingJobsTab);
-      case 2:
-        return const PostJobScreen();
-      case 3:
-        return const ChatListScreen();
-      case 4:
-        return const ProfileScreen();
-      default:
-        return HomeScreen(
-          onNavigate: _onNavigate,
-          onNavigateToJobsTab: _onNavigateToJobsTab,
-        );
-    }
+  // Tab-skjermene bygges én gang og holdes i live via IndexedStack, slik at
+  // state bevares når man bytter fane (HomeScreen/GoogleMap re-skapes ikke,
+  // scroll/filter beholdes). Deep-link til en bestemt Oppdrag-fane fungerer
+  // fortsatt: _jobsKey byttes i _onNavigateToJobsTab, som tvinger JobsScreen
+  // til å re-konstrueres og lese initialTab på nytt. Rekkefølgen MÅ matche
+  // bottom-nav-indeksene (0=Hjem, 1=Oppdrag, 2=Post, 3=Chat, 4=Profil).
+  List<Widget> _buildScreens() {
+    return [
+      HomeScreen(
+        onNavigate: _onNavigate,
+        onNavigateToJobsTab: _onNavigateToJobsTab,
+      ),
+      JobsScreen(key: _jobsKey, initialTab: _pendingJobsTab),
+      const PostJobScreen(),
+      const ChatListScreen(),
+      const ProfileScreen(),
+    ];
   }
 
   @override
@@ -74,7 +70,10 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       extendBody: true,
-      body: _buildScreen(),
+      body: IndexedStack(
+        index: _index,
+        children: _buildScreens(),
+      ),
       bottomNavigationBar: SizedBox(
         height: 108,
         child: Stack(
