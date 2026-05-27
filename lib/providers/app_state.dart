@@ -1330,11 +1330,18 @@ class AppState extends ChangeNotifier {
   Future<void> incrementView(String id) async {
     final job = getJobById(id);
     if (job == null) return;
+    // Optimistisk lokal bump (kun i minnet — ingen clobber-risiko).
     final updated = job.copyWith(viewCount: job.viewCount + 1);
     _replaceJobLocally(updated);
     notifyListeners();
     try {
-      await _supabaseService.updateJob(updated);
+      // Skriver KUN view_count remote (atomisk RPC eller målrettet kolonne-
+      // update). Tidligere brukte vi updateJob, som skrev hele raden og kunne
+      // overskrive samtidige status/reservasjons-endringer med utdatert state.
+      await _supabaseService.incrementJobViewCount(
+        jobId: id,
+        fallbackViewCount: updated.viewCount,
+      );
     } catch (e) {
       debugPrint('incrementView error: $e');
     }

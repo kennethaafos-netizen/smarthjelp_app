@@ -83,6 +83,46 @@ class SupabaseService {
     return Job.fromSupabase(Map<String, dynamic>.from(response));
   }
 
+  /// Øker view_count for ETT oppdrag uten å skrive resten av raden.
+  ///
+  /// Tidligere ble view_count bumpet via updateJob (full-rad-update), som
+  /// kunne overskrive samtidige endringer i status/accepted_by_user_id/
+  /// reserved_at osv. med utdaterte lokale verdier.
+  ///
+  /// Her prøver vi først en atomisk RPC (`increment_job_view_count`) som
+  /// gjør `view_count = view_count + 1` server-side. Hvis RPC-en ikke finnes
+  /// ennå (migrasjonen er ikke kjørt), faller vi tilbake til en målrettet
+  /// kolonne-update som KUN rører view_count. Begge veier lar samtidige
+  /// felter være i fred. Best-effort: view_count er kosmetisk, så feil
+  /// logges stille uten å påvirke UI.
+  Future<void> incrementJobViewCount({
+    required String jobId,
+    required int fallbackViewCount,
+  }) async {
+    if (jobId.isEmpty) return;
+
+    try {
+      await _client.rpc(
+        'increment_job_view_count',
+        params: {'job_id': jobId},
+      );
+      return;
+    } catch (error) {
+      // RPC mangler sannsynligvis (migrasjon ikke kjørt) — fall tilbake til
+      // målrettet kolonne-update under.
+      debugPrint('SmartHjelp incrementJobViewCount rpc fallback: $error');
+    }
+
+    try {
+      await _client
+          .from('jobs')
+          .update({'view_count': fallbackViewCount})
+          .eq('id', jobId);
+    } catch (error) {
+      debugPrint('SmartHjelp incrementJobViewCount update error: $error');
+    }
+  }
+
   Future<Job?> reserveJobAtomic({
     required String jobId,
     required String workerUserId,
