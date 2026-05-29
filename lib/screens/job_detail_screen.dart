@@ -173,9 +173,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 // forsvinner samtidig via hasRatedJob.
                 _ratingBanner(appState, job, isOwner, isWorker),
 
-                if (images.isNotEmpty) _heroGallery(images),
+                if (images.isNotEmpty)
+                  _heroGallery(images)
+                else
+                  _placeholderHeader(job),
                 const SizedBox(height: 16),
-                _titleCard(job),
+                _titleCard(job, isOwner, isWorker),
                 const SizedBox(height: 14),
 
                 _trustCard(appState, job, isOwner, isWorker),
@@ -250,7 +253,122 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     );
   }
 
-  Widget _titleCard(Job job) {
+  // Item 6: rolig, premium placeholder når oppdraget ikke har bilder, så
+  // skjermen ikke starter flatt. Lokal kategori→palett — rører IKKE JobCard
+  // eller delte kategori-systemer. Endrer ikke bilde-logikken.
+  Widget _placeholderHeader(Job job) {
+    final palette = _placeholderPalette(job.category);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        height: 150,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [palette.$1, palette.$2],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -24,
+              top: -24,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    palette.$3,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    size: 40,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    job.category,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Lokal palett for placeholder-headeren. Kun til denne skjermen.
+  (Color, Color, IconData) _placeholderPalette(String category) {
+    switch (category.trim().toLowerCase()) {
+      case 'flytting':
+        return (
+          const Color(0xFFFFD6B8),
+          const Color(0xFFFFBFA0),
+          Icons.local_shipping_rounded
+        );
+      case 'renhold':
+      case 'rengjøring':
+      case 'rengjoring':
+        return (
+          const Color(0xFFE0DBFF),
+          const Color(0xFFC9BEFF),
+          Icons.cleaning_services_rounded
+        );
+      case 'hage':
+        return (
+          const Color(0xFFC5EBD3),
+          const Color(0xFF9FDCB6),
+          Icons.yard_rounded
+        );
+      case 'montering':
+        return (
+          const Color(0xFFCDEEE8),
+          const Color(0xFFA2DDD3),
+          Icons.handyman_rounded
+        );
+      case 'maling':
+        return (
+          const Color(0xFFFFE7B5),
+          const Color(0xFFFFD38A),
+          Icons.format_paint_rounded
+        );
+      case 'transport':
+        return (
+          const Color(0xFFD0E2FF),
+          const Color(0xFFA7C5FF),
+          Icons.directions_car_rounded
+        );
+      case 'vinter':
+        return (
+          const Color(0xFFD9F1FF),
+          const Color(0xFFB6E3FF),
+          Icons.ac_unit_rounded
+        );
+      default:
+        return (
+          const Color(0xFFDCE7FF),
+          const Color(0xFFB8CCFF),
+          Icons.work_rounded
+        );
+    }
+  }
+
+  Widget _titleCard(Job job, bool isOwner, bool isWorker) {
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,7 +438,45 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               ),
             ],
           ),
+          if (isOwner || isWorker) ...[
+            const SizedBox(height: 10),
+            _roleChip(isOwner),
+          ],
         ],
+      ),
+    );
+  }
+
+  // Tydeliggjør nåværende brukers rolle på oppdraget. Vises kun for
+  // involverte parter (eier eller utfører) — ikke for offentlig visning.
+  Widget _roleChip(bool isOwner) {
+    final label = isOwner ? 'Du: Oppdragsgiver' : 'Du: Oppdragstaker';
+    final icon =
+        isOwner ? Icons.person_outline_rounded : Icons.handyman_outlined;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: _primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _primary.withValues(alpha: 0.20)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: _primary),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -671,7 +827,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
             '${job.platformFee.toStringAsFixed(0)} kr',
           ),
           const SizedBox(height: 10),
-          Container(height: 1, color: _bg),
+          Container(height: 1, color: const Color(0xFFE4E9F2)),
           const SizedBox(height: 10),
           _priceRow(
             'Du betaler totalt',
@@ -870,6 +1026,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           _infoRow(Icons.visibility_outlined, 'Visninger', '${job.viewCount}'),
           const SizedBox(height: 8),
           _infoRow(Icons.tag_outlined, 'Kategori', job.category),
+          const SizedBox(height: 8),
+          _infoRow(
+            Icons.timelapse_rounded,
+            'Reservasjonstid',
+            job.isUrgent ? 'Haste (10 min)' : 'Vanlig (30 min)',
+          ),
         ],
       ),
     );
@@ -935,6 +1097,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE4E9F2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: child,
     );
@@ -1282,6 +1451,9 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
+        border: const Border(
+          top: BorderSide(color: Color(0xFFE4E9F2), width: 1),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
