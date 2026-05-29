@@ -721,7 +721,7 @@ class _JobCardState extends State<JobCard> {
     Color fg;
 
     if (job.status == JobStatus.open) {
-      text = 'Åpent';
+      text = 'Åpen';
       bg = _accent.withOpacity(0.12);
       fg = _accent;
     } else if (job.status == JobStatus.reserved) {
@@ -866,7 +866,7 @@ class _JobCardState extends State<JobCard> {
             text,
             style: const TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: _primary,
             ),
           ),

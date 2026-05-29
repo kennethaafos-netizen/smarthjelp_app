@@ -60,9 +60,9 @@ class SmartHjelpApp extends StatelessWidget {
         theme: ThemeData(
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF4A8BFF),
-            primary: const Color(0xFF4A8BFF),
-            secondary: const Color(0xFF2ED3C6),
+            seedColor: const Color(0xFF2356E8),
+            primary: const Color(0xFF2356E8),
+            secondary: const Color(0xFF18B7A6),
           ),
           scaffoldBackgroundColor: const Color(0xFFF6F8FC),
           textTheme: GoogleFonts.interTextTheme(),
@@ -73,7 +73,7 @@ class SmartHjelpApp extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              backgroundColor: const Color(0xFF4A8BFF),
+              backgroundColor: const Color(0xFF2356E8),
               foregroundColor: Colors.white,
               textStyle: const TextStyle(
                 fontWeight: FontWeight.bold,
@@ -86,7 +86,7 @@ class SmartHjelpApp extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              backgroundColor: const Color(0xFF4A8BFF),
+              backgroundColor: const Color(0xFF2356E8),
               foregroundColor: Colors.white,
               textStyle: const TextStyle(
                 fontWeight: FontWeight.bold,
@@ -99,8 +99,8 @@ class SmartHjelpApp extends StatelessWidget {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              side: const BorderSide(color: Color(0xFF4A8BFF)),
-              foregroundColor: const Color(0xFF4A8BFF),
+              side: const BorderSide(color: Color(0xFF2356E8)),
+              foregroundColor: const Color(0xFF2356E8),
               textStyle: const TextStyle(
                 fontWeight: FontWeight.bold,
               ),
