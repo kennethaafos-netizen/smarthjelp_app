@@ -72,15 +72,30 @@ class SupabaseService {
   }
 
   Future<Job?> updateJob(Job job) async {
-    final response = await _client
+    // Bruker .select() (liste) i stedet for .maybeSingle() for å unngå
+    // PGRST116 ("Cannot coerce the result to a single JSON object") når
+    // updaten returnerer 0 rader. Med PK-filter (id) kan resultatet aldri
+    // bli >1 rad, så 0 rader er eneste ikke-1-tilfelle — typisk RLS
+    // (UPDATE- eller SELECT-policy) eller endret server-state. Da
+    // returnerer vi null slik at _saveJobUpdate faller tilbake til
+    // reloadJobs(). Ekte feil (nettverk/auth/andre PG-koder) kastes
+    // fortsatt, siden vi ikke fanger dem her.
+    final rows = await _client
         .from('jobs')
         .update(job.toSupabaseUpdate())
         .eq('id', job.id)
-        .select()
-        .maybeSingle();
+        .select();
 
-    if (response == null) return null;
-    return Job.fromSupabase(Map<String, dynamic>.from(response));
+    final list = rows as List;
+    if (list.isEmpty) {
+      debugPrint(
+        'SmartHjelp updateJob: 0 rader returnert for id=${job.id}. '
+        'Sannsynligvis RLS (UPDATE- eller SELECT-policy) eller endret '
+        'server-state. _saveJobUpdate faller tilbake til reloadJobs().',
+      );
+      return null;
+    }
+    return Job.fromSupabase(Map<String, dynamic>.from(list.first));
   }
 
   /// Øker view_count for ETT oppdrag uten å skrive resten av raden.
@@ -130,7 +145,14 @@ class SupabaseService {
   }) async {
     final reservedAtIso = reservedAt.toIso8601String();
 
-    final response = await _client
+    // Samme liste-baserte mønster som updateJob: .select() (liste) i stedet
+    // for .maybeSingle() unngår PGRST116 ved 0 rader. Her er 0 rader et
+    // NORMALT utfall — race-tap der noen andre allerede tok jobben (WHERE
+    // status='open' AND accepted_by_user_id IS NULL matcher ikke lenger).
+    // Da returnerer vi null, og AppState tolker det som alreadyTaken. Ekte
+    // feil kastes fortsatt (ingen catch her). Reservasjonslogikk og
+    // statuser er uendret.
+    final rows = await _client
         .from('jobs')
         .update({
           'status': 'reserved',
@@ -146,11 +168,18 @@ class SupabaseService {
         .eq('id', jobId)
         .eq('status', 'open')
         .filter('accepted_by_user_id', 'is', null)
-        .select()
-        .maybeSingle();
+        .select();
 
-    if (response == null) return null;
-    return Job.fromSupabase(Map<String, dynamic>.from(response));
+    final list = rows as List;
+    if (list.isEmpty) {
+      // Normalt: noen andre tok jobben (race) — ikke en feil.
+      debugPrint(
+        'SmartHjelp reserveJobAtomic: 0 rader for id=$jobId — '
+        'jobben er sannsynligvis allerede tatt (race). Tolkes som alreadyTaken.',
+      );
+      return null;
+    }
+    return Job.fromSupabase(Map<String, dynamic>.from(list.first));
   }
 
   Future<void> deleteJob(String jobId) async {
