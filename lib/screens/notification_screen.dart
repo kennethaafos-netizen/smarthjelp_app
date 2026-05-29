@@ -307,7 +307,7 @@ class NotificationScreen extends StatelessWidget {
       case AppNotificationType.completed:
         return Icons.check_circle_outline_rounded;
       case AppNotificationType.approved:
-        return Icons.verified_outlined;
+        return Icons.payments_outlined;
       case AppNotificationType.cancelRequested:
         return Icons.hourglass_top_rounded;
       case AppNotificationType.cancelApproved:
