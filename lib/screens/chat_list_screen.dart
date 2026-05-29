@@ -12,6 +12,8 @@ const Color _bg = Color(0xFFF4F7FC);
 const Color _textPrimary = Color(0xFF0F1E3A);
 const Color _textMuted = Color(0xFF6E7A90);
 const Color _danger = Color(0xFFDC2626);
+const Color _warning = Color(0xFFE08A00);
+const Color _safeGreen = Color(0xFF0EA877);
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -38,13 +40,28 @@ class ChatListScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Chat',
-          style: TextStyle(
-            color: _textPrimary,
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Chat',
+              style: TextStyle(
+                color: _textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+              ),
+            ),
+            if (jobs.isNotEmpty)
+              Text(
+                jobs.length == 1 ? '1 samtale' : '${jobs.length} samtaler',
+                style: const TextStyle(
+                  color: _textMuted,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+          ],
         ),
         iconTheme: const IconThemeData(color: _textPrimary),
       ),
@@ -113,7 +130,18 @@ class ChatListScreen extends StatelessWidget {
   }
 
   Widget _chatItem(BuildContext context, AppState appState, Job job) {
-    final initial = job.title.isNotEmpty ? job.title[0].toUpperCase() : '?';
+    // Motpart: eier hvis jeg er utfører, ellers utføreren. Reell profil via
+    // getUserById ('Bruker'-fallback mens profilen hydreres — ingen faking).
+    final me = appState.currentUser.id;
+    final otherId =
+        job.createdByUserId == me ? job.acceptedByUserId : job.createdByUserId;
+    final other = (otherId == null || otherId.isEmpty)
+        ? null
+        : appState.getUserById(otherId);
+    final counterpartyName =
+        (other?.firstName.isNotEmpty ?? false) ? other!.firstName : 'Bruker';
+    final initial =
+        counterpartyName.isNotEmpty ? counterpartyName[0].toUpperCase() : '?';
 
     // Sprint 5: ulest-state per chat. unreadCount=0 → standard kort.
     // unreadCount>0 → subtilt blått tint på kortet, blå venstre-stripe,
@@ -203,60 +231,39 @@ class ChatListScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Primær: motpartens navn (reell data).
                     Text(
-                      job.title,
+                      counterpartyName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: _textPrimary,
                         letterSpacing: -0.1,
                         height: 1.2,
-                        decoration: TextDecoration.none,
-                        decorationColor: hasUnread ? _primary : null,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
+                    // Sekundær: status-pille (reell job.status) + oppdragstittel
+                    // som kontekst. Ulest signaliseres fortsatt via kort-tint,
+                    // ramme, avatar-prikk og count-badgen til høyre.
                     Row(
                       children: [
-                        if (hasUnread) ...[
-                          const Icon(
-                            Icons.mark_chat_unread_rounded,
-                            size: 13,
-                            color: _primary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            unreadCount == 1
-                                ? 'Ny melding'
-                                : '$unreadCount nye meldinger',
+                        _statusPill(job.status),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            job.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: _primary,
-                              fontWeight: FontWeight.w800,
+                              color: _textMuted,
+                              fontWeight: FontWeight.w600,
                               fontSize: 12.5,
-                              letterSpacing: 0.1,
                             ),
                           ),
-                        ] else ...[
-                          const Icon(Icons.place_outlined,
-                              size: 14, color: _textMuted),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              job.locationName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _textMuted,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
                     ),
                   ],
@@ -303,6 +310,47 @@ class ChatListScreen extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // Liten status-pille fra reell job.status. Samme norske etiketter som
+  // resten av appen (JobCard/JobDetail): Åpen/Reservert/Avtalt/Fullført.
+  Widget _statusPill(JobStatus status) {
+    final Color color;
+    final String label;
+    switch (status) {
+      case JobStatus.open:
+        color = _accent;
+        label = 'Åpen';
+        break;
+      case JobStatus.reserved:
+        color = _warning;
+        label = 'Reservert';
+        break;
+      case JobStatus.inProgress:
+        color = _primary;
+        label = 'Avtalt';
+        break;
+      case JobStatus.completed:
+        color = _safeGreen;
+        label = 'Fullført';
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 10.5,
+          letterSpacing: 0.2,
         ),
       ),
     );
