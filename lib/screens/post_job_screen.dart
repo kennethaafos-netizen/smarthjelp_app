@@ -9,6 +9,16 @@ import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../services/supabase_service.dart';
 
+// Lokale design-tokens — speiler resten av appen (samme palett som
+// HomeScreen/JobDetailScreen). Holdes lokalt her; ingen global token-
+// refaktor i denne omgangen.
+const Color _kPrimary = Color(0xFF2356E8);
+const Color _kBg = Color(0xFFF4F7FC);
+const Color _kTextPrimary = Color(0xFF0F1E3A);
+const Color _kTextMuted = Color(0xFF6E7A90);
+const Color _kBorder = Color(0xFFE4E9F2);
+const Color _kSafeGreen = Color(0xFF0EA877);
+
 class PostJobScreen extends StatefulWidget {
   final Job? existingJob;
   const PostJobScreen({super.key, this.existingJob});
@@ -81,125 +91,327 @@ class _PostJobScreenState extends State<PostJobScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEditing ? 'Rediger oppdrag' : 'Legg ut oppdrag')),
+      backgroundColor: _kBg,
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Rediger oppdrag' : 'Legg ut oppdrag'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 140),
+          // Beholder romslig bunn-padding: PostJobScreen vises også som
+          // fane i AppShell under den flytende bottom-naven (extendBody),
+          // så submit-knappen må klarere navet.
+          padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 140),
           children: [
-            if (!_isEditing) _imagePicker(),
-            _field(_title, 'Tittel'),
+            if (!_isEditing) ...[
+              _sectionHeader(
+                icon: Icons.photo_library_outlined,
+                title: 'Bilder',
+                subtitle: 'Legg til inntil 5 bilder (valgfritt)',
+              ),
+              _imagePicker(),
+              const SizedBox(height: 22),
+            ],
+            _sectionHeader(
+              icon: Icons.assignment_outlined,
+              title: 'Om oppdraget',
+            ),
+            _field(_title, 'Tittel', icon: Icons.title_rounded),
             _field(_desc, 'Beskrivelse', maxLines: 4),
-            _field(_price, 'Pris til oppdragstaker (kr)', number: true, onChanged: (_) => setState(() {})),
+            _dropdown(kCategories, category, 'Kategori', (v) => setState(() => category = v)),
+            const SizedBox(height: 22),
+            _sectionHeader(
+              icon: Icons.payments_outlined,
+              title: 'Pris',
+            ),
+            _field(_price, 'Pris til oppdragstaker (kr)',
+                number: true,
+                icon: Icons.payments_outlined,
+                onChanged: (_) => setState(() {})),
             if (_priceValue > 0) ...[
               const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE4E9F2)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Til oppdragstaker: $_priceValue kr',
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF0F1E3A))),
-                    const SizedBox(height: 6),
-                    Text('Plattformavgift: ${_feeValue.toStringAsFixed(0)} kr inkl. mva',
-                        style: const TextStyle(color: Color(0xFF6E7A90), fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    Text('Du betaler totalt: ${_totalValue.toStringAsFixed(0)} kr',
-                        style: const TextStyle(color: Color(0xFF2356E8), fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 8),
-                    const Text('Beløpet holdes trygt av SmartHjelp til du godkjenner fullført jobb.',
-                        style: TextStyle(color: Color(0xFF0EA877), fontSize: 12, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
+              _priceBreakdownCard(),
             ],
-            _dropdown(kCategories, category, 'Kategori', (v) => setState(() => category = v)),
+            const SizedBox(height: 22),
+            _sectionHeader(
+              icon: Icons.place_outlined,
+              title: 'Sted',
+            ),
             if (_isEditing)
               _dropdown(kLocations, _editKommune, 'Kommune', (v) => setState(() => _editKommune = v))
             else
               _postcodeField(),
-            const SizedBox(height: 16),
-            _reservationSelector(),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(_isEditing ? 'Lagre endringer' : 'Publiser'),
+            const SizedBox(height: 22),
+            _sectionHeader(
+              icon: Icons.timelapse_rounded,
+              title: 'Reservasjonstid',
             ),
+            _reservationSelector(),
+            const SizedBox(height: 28),
+            _submitButton(),
           ],
         ),
       ),
     );
   }
 
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _kPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 16, color: _kPrimary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _kTextPrimary,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: _kTextMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _priceBreakdownCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _priceRow('Til oppdragstaker', '$_priceValue kr'),
+          const SizedBox(height: 6),
+          _priceRow(
+              'Plattformavgift (inkl. mva)', '${_feeValue.toStringAsFixed(0)} kr'),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: _kBorder),
+          const SizedBox(height: 10),
+          _priceRow('Du betaler totalt', '${_totalValue.toStringAsFixed(0)} kr',
+              emphasize: true),
+          const SizedBox(height: 10),
+          const Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, size: 14, color: _kSafeGreen),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Beløpet holdes trygt av SmartHjelp til du godkjenner fullført jobb.',
+                  style: TextStyle(
+                    color: _kSafeGreen,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _priceRow(String label, String value, {bool emphasize = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: emphasize ? _kTextPrimary : _kTextMuted,
+            fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 13.5,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: emphasize ? _kPrimary : _kTextPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: emphasize ? 16 : 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _submitButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isSubmitting ? null : _submit,
+        icon: _isSubmitting
+            ? const SizedBox.shrink()
+            : Icon(_isEditing ? Icons.save_rounded : Icons.send_rounded,
+                size: 20),
+        label: _isSubmitting
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child:
+                    CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Text(_isEditing ? 'Lagre endringer' : 'Publiser'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _kPrimary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          elevation: 0,
+        ),
+      ),
+    );
+  }
+
   Widget _imagePicker() {
+    final hasImages = images.isNotEmpty;
     return Column(
       children: [
         GestureDetector(
           onTap: _pickImages,
+          behavior: HitTestBehavior.opaque,
           child: Container(
-            height: 180,
+            height: 140,
             width: double.infinity,
-            decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(14)),
-            child: images.isEmpty
-                ? const Center(child: Text('Velg bilder'))
-                : const Center(child: Text('Endre bilder')),
+            decoration: BoxDecoration(
+              color: _kPrimary.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: _kPrimary.withValues(alpha: 0.35), width: 1.5),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _kPrimary.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    hasImages
+                        ? Icons.collections_rounded
+                        : Icons.add_a_photo_outlined,
+                    color: _kPrimary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  hasImages ? 'Endre bilder' : 'Legg til bilder',
+                  style: const TextStyle(
+                      color: _kTextPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasImages ? '${images.length}/5 valgt' : 'Inntil 5 bilder',
+                  style: const TextStyle(
+                      color: _kTextMuted,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12),
+                ),
+              ],
+            ),
           ),
         ),
         if (images.isNotEmpty) ...[
           const SizedBox(height: 12),
           SizedBox(
             height: 220,
-            child: Stack(
-              children: [
-                PageView.builder(
-                  controller: _controller,
-                  itemCount: images.length,
-                  onPageChanged: (i) => setState(() => currentIndex = i),
-                  itemBuilder: (_, index) {
-                    final img = images[index];
-                    return FutureBuilder(
-                      future: img.readAsBytes(),
-                      builder: (_, snap) {
-                        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                        return Image.memory(snap.data!, fit: BoxFit.cover, width: double.infinity);
-                      },
-                    );
-                  },
-                ),
-                Positioned(
-                  left: 10, top: 0, bottom: 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                    onPressed: currentIndex > 0
-                        ? () => _controller.previousPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
-                        : null,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    controller: _controller,
+                    itemCount: images.length,
+                    onPageChanged: (i) => setState(() => currentIndex = i),
+                    itemBuilder: (_, index) {
+                      final img = images[index];
+                      return FutureBuilder(
+                        future: img.readAsBytes(),
+                        builder: (_, snap) {
+                          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                          return Image.memory(snap.data!, fit: BoxFit.cover, width: double.infinity);
+                        },
+                      );
+                    },
                   ),
-                ),
-                Positioned(
-                  right: 10, top: 0, bottom: 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                    onPressed: currentIndex < images.length - 1
-                        ? () => _controller.nextPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
-                        : null,
+                  Positioned(
+                    left: 10, top: 0, bottom: 0,
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                      onPressed: currentIndex > 0
+                          ? () => _controller.previousPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
+                          : null,
+                    ),
                   ),
-                ),
-                Positioned(
-                  bottom: 10, right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    color: Colors.black54,
-                    child: Text('${currentIndex + 1}/${images.length}', style: const TextStyle(color: Colors.white)),
+                  Positioned(
+                    right: 10, top: 0, bottom: 0,
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_forward_ios, color: Colors.white),
+                      onPressed: currentIndex < images.length - 1
+                          ? () => _controller.nextPage(duration: const Duration(milliseconds: 200), curve: Curves.ease)
+                          : null,
+                    ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    bottom: 10, right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text('${currentIndex + 1}/${images.length}', style: const TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -481,17 +693,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            'Reservasjonstid',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F1E3A),
-              fontSize: 14,
-            ),
-          ),
-        ),
         Row(
           children: [
             Expanded(
@@ -590,10 +791,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Widget _field(
     TextEditingController c,
-    String hint, {
+    String label, {
     bool number = false,
     int maxLines = 1,
     ValueChanged<String>? onChanged,
+    IconData? icon,
   }) {
     // FASE 3 FIX: multiline felt skal gi newline når brukeren trykker Enter,
     // ikke submit. Dette krever TextInputType.multiline + newline-action.
@@ -611,8 +813,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
         textInputAction: action,
         maxLines: maxLines,
         onChanged: onChanged,
-        validator: (v) => (v == null || v.isEmpty) ? '$hint må fylles ut' : null,
-        decoration: InputDecoration(hintText: hint),
+        validator: (v) => (v == null || v.isEmpty) ? '$label må fylles ut' : null,
+        decoration: InputDecoration(
+          labelText: label,
+          alignLabelWithHint: isMultiline,
+          prefixIcon:
+              icon == null ? null : Icon(icon, size: 20, color: _kTextMuted),
+        ),
       ),
     );
   }
@@ -636,7 +843,13 @@ class _PostJobScreenState extends State<PostJobScreen> {
               if (_kommuneForPostcode(v) == null) return 'Postnummeret er utenfor dekningsområdet';
               return null;
             },
-            decoration: const InputDecoration(hintText: 'Postnummer (f.eks. 3717)', counterText: ''),
+            decoration: const InputDecoration(
+              labelText: 'Postnummer',
+              hintText: 'f.eks. 3717',
+              counterText: '',
+              prefixIcon: Icon(Icons.markunread_mailbox_outlined,
+                  size: 20, color: _kTextMuted),
+            ),
           ),
           if (hasInput)
             Padding(
