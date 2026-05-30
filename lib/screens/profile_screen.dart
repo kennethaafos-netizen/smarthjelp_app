@@ -67,10 +67,15 @@ class ProfileScreen extends StatelessWidget {
               _identitySection(context, user),
               const SizedBox(height: 16),
               _earningsCard(
+                context,
                 earned: appState.moneyEarned,
                 spent: appState.moneySpent,
                 completed: completedTaken.length,
               ),
+              const SizedBox(height: 16),
+              _activitySection(appState),
+              const SizedBox(height: 16),
+              _prestasjonerSection(user, appState),
               const SizedBox(height: 16),
               // Push-varsler administreres kun i Innstillinger. Her viser vi
               // en read-only status-rad som navigerer dit ved trykk, så det
@@ -829,13 +834,22 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // ---------- EARNINGS / STATS ----------
-  Widget _earningsCard({
+  Widget _earningsCard(
+    BuildContext context, {
     required double earned,
     required double spent,
     required int completed,
   }) {
+    void openExport() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ExportScreen()),
+      );
+    }
+
     return _section(
       title: 'Oversikt',
+      subtitle: 'Trykk for å åpne rapporten.',
       child: Row(
         children: [
           Expanded(
@@ -843,6 +857,7 @@ class ProfileScreen extends StatelessWidget {
               'Tjent',
               '${earned.toStringAsFixed(0)} kr',
               color: _safeGreen,
+              onTap: openExport,
             ),
           ),
           const SizedBox(width: 10),
@@ -851,6 +866,7 @@ class ProfileScreen extends StatelessWidget {
               'Brukt',
               '${spent.toStringAsFixed(0)} kr',
               color: _primary,
+              onTap: openExport,
             ),
           ),
           const SizedBox(width: 10),
@@ -859,6 +875,7 @@ class ProfileScreen extends StatelessWidget {
               'Fullført',
               '$completed',
               color: _accent,
+              onTap: openExport,
             ),
           ),
         ],
@@ -866,8 +883,13 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _miniStat(String label, String value, {required Color color}) {
-    return Container(
+  Widget _miniStat(
+    String label,
+    String value, {
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    final tile = Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
@@ -901,6 +923,12 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (onTap == null) return tile;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: tile,
     );
   }
 
@@ -1531,6 +1559,318 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // ---------- AKTIVITET (siste 6 mnd) ----------
+  // Inntekt + fullførte oppdrag siste 6 mnd, gruppert per måned via
+  // job.createdAt (samme datasemantikk som skatterapporten). Honest
+  // empty state hvis ingen aktivitet. Rendret med en lokal CustomPainter
+  // — ingen nye dependencies.
+  static const List<String> _monthLabels = [
+    'jan', 'feb', 'mar', 'apr', 'mai', 'jun',
+    'jul', 'aug', 'sep', 'okt', 'nov', 'des',
+  ];
+
+  List<({DateTime month, double income, int completed})>
+      _last6MonthsActivity(AppState appState) {
+    final now = DateTime.now();
+    final buckets = <DateTime>[];
+    for (var i = 5; i >= 0; i--) {
+      buckets.add(DateTime(now.year, now.month - i, 1));
+    }
+    return buckets.map((m) {
+      final next = DateTime(m.year, m.month + 1, 1);
+      double income = 0;
+      var count = 0;
+      for (final j in appState.completedTakenJobs) {
+        if (!j.createdAt.isBefore(m) && j.createdAt.isBefore(next)) {
+          income += j.payout;
+          count += 1;
+        }
+      }
+      return (month: m, income: income, completed: count);
+    }).toList();
+  }
+
+  Widget _activitySection(AppState appState) {
+    final data = _last6MonthsActivity(appState);
+    final incomes = [for (final d in data) d.income];
+    final counts = [for (final d in data) d.completed.toDouble()];
+    final months = [for (final d in data) d.month];
+    final hasActivity =
+        incomes.any((v) => v > 0) || counts.any((v) => v > 0);
+
+    return _section(
+      title: 'Aktivitet siste 6 mnd',
+      subtitle: 'Inntekt og fullførte oppdrag som utfører.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!hasActivity)
+            _emptyActivityHint()
+          else ...[
+            _barBlock(
+              label: 'Inntekt',
+              color: _primary,
+              values: incomes,
+              months: months,
+              formatter: (v) => '${v.toStringAsFixed(0)} kr',
+            ),
+            const SizedBox(height: 16),
+            _barBlock(
+              label: 'Fullført',
+              color: _accent,
+              values: counts,
+              months: months,
+              formatter: (v) => v.toStringAsFixed(0),
+            ),
+          ],
+          const SizedBox(height: 10),
+          const Text(
+            'Basert på oppdragets dato. SmartHjelp lagrer ikke '
+            'fullføringsdato i denne versjonen.',
+            style: TextStyle(
+              color: _muted,
+              fontWeight: FontWeight.w500,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyActivityHint() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.bar_chart_rounded, color: _muted, size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Ingen aktivitet enda. Tallene dukker opp her når du fullfører oppdrag.',
+              style: TextStyle(
+                color: _muted,
+                fontWeight: FontWeight.w600,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _barBlock({
+    required String label,
+    required Color color,
+    required List<double> values,
+    required List<DateTime> months,
+    required String Function(double) formatter,
+  }) {
+    final maxValue = values.fold<double>(0, (m, v) => v > m ? v : m);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _textDark,
+                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              maxValue > 0 ? 'Maks ${formatter(maxValue)}' : '—',
+              style: const TextStyle(
+                color: _muted,
+                fontWeight: FontWeight.w600,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 56,
+          child: CustomPaint(
+            painter: _BarsPainter(
+              values: values,
+              maxValue: maxValue,
+              color: color,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            for (final m in months)
+              Expanded(
+                child: Text(
+                  _monthLabels[m.month - 1],
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ---------- PRESTASJONER ----------
+  // Reelle milepæler basert utelukkende på data appen allerede har.
+  // Rolig wording: "Oppnådd" / "Ikke ennå" — ingen medaljer, ingen poeng.
+  Widget _prestasjonerSection(UserProfile user, AppState appState) {
+    final completedCount = appState.completedTakenJobs.length;
+    final hasPosted = appState.postedByCurrentUser.isNotEmpty;
+    final ratingMet = user.rating >= 4.5 && user.ratingCount >= 3;
+    final profileComplete =
+        user.phone.isNotEmpty && user.preferredArea.isNotEmpty;
+
+    final items = <_AchievementItem>[
+      _AchievementItem(
+        title: 'Første fullførte oppdrag',
+        achieved: completedCount >= 1,
+        progress: completedCount >= 1 ? null : '0 / 1',
+      ),
+      _AchievementItem(
+        title: '5 fullførte oppdrag',
+        achieved: completedCount >= 5,
+        progress: completedCount >= 5 ? null : '$completedCount / 5',
+      ),
+      _AchievementItem(
+        title: '10 fullførte oppdrag',
+        achieved: completedCount >= 10,
+        progress: completedCount >= 10 ? null : '$completedCount / 10',
+      ),
+      _AchievementItem(
+        title: 'Snittrating 4.5+',
+        achieved: ratingMet,
+        progress: ratingMet
+            ? null
+            : (user.ratingCount < 3
+                ? 'Krever 3+ vurderinger'
+                : 'Snitt nå: ${user.rating.toStringAsFixed(1)}'),
+      ),
+      _AchievementItem(
+        title: 'Profilen er utfylt',
+        achieved: profileComplete,
+        progress:
+            profileComplete ? null : 'Legg til telefon og område',
+      ),
+      _AchievementItem(
+        title: 'Første utlagte oppdrag',
+        achieved: hasPosted,
+        progress: hasPosted ? null : '0 / 1',
+      ),
+    ];
+
+    return _section(
+      title: 'Prestasjoner',
+      subtitle: 'Basert på reell aktivitet i appen.',
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) ...[
+              const SizedBox(height: 10),
+              Divider(height: 1, color: _muted.withValues(alpha: 0.10)),
+              const SizedBox(height: 10),
+            ],
+            _prestasjonRow(items[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _prestasjonRow(_AchievementItem item) {
+    final isOn = item.achieved;
+    final accent = isOn ? _safeGreen : _muted;
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(
+            isOn
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            color: accent,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                item.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: _text,
+                  fontSize: 14,
+                ),
+              ),
+              if (item.progress != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  item.progress!,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            isOn ? 'Oppnådd' : 'Ikke ennå',
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // ---------- SECTION WRAPPER ----------
   Widget _section({
     required String title,
@@ -1841,5 +2181,82 @@ class _PhoneEditSheetState extends State<_PhoneEditSheet> {
         ],
       ),
     );
+  }
+}
+
+// ---------- PRESTASJONER: enkel dataholder ----------
+class _AchievementItem {
+  final String title;
+  final bool achieved;
+  final String? progress;
+
+  const _AchievementItem({
+    required this.title,
+    required this.achieved,
+    this.progress,
+  });
+}
+
+// ---------- AKTIVITET: bar-tegner ----------
+// Rolig, premium tegning av 6 søyler med en lys track under hver søyle.
+// Egen instans per BarBlock (Inntekt og Fullført), så fargen og verdiene
+// holdes lokale.
+class _BarsPainter extends CustomPainter {
+  final List<double> values;
+  final double maxValue;
+  final Color color;
+
+  _BarsPainter({
+    required this.values,
+    required this.maxValue,
+    required this.color,
+  });
+
+  static const Radius _radius = Radius.circular(4);
+  static const Color _trackColor = Color(0xFFE4E9F2);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = values.length;
+    if (n == 0 || size.width <= 0 || size.height <= 0) return;
+
+    const gap = 8.0;
+    final totalGap = gap * (n - 1);
+    final available = size.width - totalGap;
+    if (available <= 0) return;
+    final barWidth = (available / n).clamp(2.0, 40.0);
+
+    final trackPaint = Paint()..color = _trackColor;
+    final barPaint = Paint()..color = color;
+
+    for (var i = 0; i < n; i++) {
+      final x = i * (barWidth + gap);
+      final trackRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, 0, barWidth, size.height),
+        _radius,
+      );
+      canvas.drawRRect(trackRect, trackPaint);
+
+      if (maxValue <= 0) continue;
+      final ratio = (values[i] / maxValue).clamp(0.0, 1.0);
+      if (ratio == 0) continue;
+      var h = ratio * size.height;
+      if (h < 2) h = 2;
+      final barRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, size.height - h, barWidth, h),
+        _radius,
+      );
+      canvas.drawRRect(barRect, barPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BarsPainter old) {
+    if (old.color != color || old.maxValue != maxValue) return true;
+    if (old.values.length != values.length) return true;
+    for (var i = 0; i < values.length; i++) {
+      if (old.values[i] != values[i]) return true;
+    }
+    return false;
   }
 }
