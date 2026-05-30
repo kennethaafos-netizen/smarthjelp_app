@@ -7,7 +7,9 @@ import '../models/user_profile.dart';
 import '../providers/app_state.dart';
 import '../widgets/trust_badges.dart';
 import 'account_screen.dart';
+import 'contact_screen.dart';
 import 'export_screen.dart';
+import 'faq_screen.dart';
 import 'jobs_screen.dart';
 import 'settings_screen.dart';
 
@@ -62,6 +64,8 @@ class ProfileScreen extends StatelessWidget {
                 activeCount: activeTaken.length,
               ),
               const SizedBox(height: 16),
+              _identitySection(context, user),
+              const SizedBox(height: 16),
               _earningsCard(
                 earned: appState.moneyEarned,
                 spent: appState.moneySpent,
@@ -115,6 +119,8 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               _profileInfo(context, user),
+              const SizedBox(height: 16),
+              _helpInfoSection(context),
               const SizedBox(height: 16),
               _primaryActionButton(
                 icon: Icons.file_download_outlined,
@@ -246,8 +252,17 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    _statusPill(
-                      user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
+                    // Status- og nivå-pille side om side. Nivå er en rolig
+                    // erfarings-indikator, ikke en gamifisert badge.
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _statusPill(
+                          user.wantsToWork ? 'Klar for oppdrag' : 'Søker hjelp',
+                        ),
+                        _tierPill(context, completedCount),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     // Wrap lar innholdet flyte til neste linje på smale
@@ -301,6 +316,150 @@ class ProfileScreen extends StatelessWidget {
           _headerStatsRow(
             completed: completedCount,
             active: activeCount,
+            onCompletedTap: () => _openJobs(context, JobsFilter.takenCompleted),
+            onActiveTap: () => _openJobs(context, JobsFilter.takenActive),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -------- TIER (erfarings-nivå basert på reelle fullførte oppdrag) --------
+  // Bevisst rolig wording — ingen ikoner/medaljer, ingen poeng. Bare en
+  // kort beskrivelse av erfaring. Terskler vises i info-arket.
+  static String _tierLabel(int completed) {
+    if (completed >= 20) return 'Pålitelig';
+    if (completed >= 5) return 'Erfaren';
+    return 'Nybegynner';
+  }
+
+  Widget _tierPill(BuildContext context, int completed) {
+    return GestureDetector(
+      onTap: () => _showTierInfo(context, completed),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.30),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          'Nivå: ${_tierLabel(completed)}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTierInfo(BuildContext context, int completed) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: _muted.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const Text(
+                'Nivå',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: _textDark,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Nivå er en kort beskrivelse av erfaring basert på antall '
+                'fullførte oppdrag som utfører. Det er ikke en vurdering '
+                'av kvalitet og påvirker ikke utbetaling eller rating.',
+                style: TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                  fontSize: 13.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _tierRow('Nybegynner', '0–4 fullførte oppdrag', completed < 5),
+              _tierRow(
+                'Erfaren',
+                '5–19 fullførte oppdrag',
+                completed >= 5 && completed < 20,
+              ),
+              _tierRow('Pålitelig', '20+ fullførte oppdrag', completed >= 20),
+              const SizedBox(height: 12),
+              Text(
+                completed == 1
+                    ? 'Du har 1 fullført oppdrag.'
+                    : 'Du har $completed fullførte oppdrag.',
+                style: const TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tierRow(String label, String range, bool current) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: current ? _primary : _muted.withValues(alpha: 0.30),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: current ? FontWeight.w800 : FontWeight.w700,
+              color: current ? _textDark : _muted,
+              fontSize: 14,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            range,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -379,32 +538,12 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _verifiedPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.22),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.verified_rounded, color: Colors.white, size: 13),
-          SizedBox(width: 4),
-          Text(
-            'Verifisert',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerStatsRow({required int completed, required int active}) {
+  Widget _headerStatsRow({
+    required int completed,
+    required int active,
+    VoidCallback? onCompletedTap,
+    VoidCallback? onActiveTap,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       decoration: BoxDecoration(
@@ -419,6 +558,7 @@ class ProfileScreen extends StatelessWidget {
               icon: Icons.task_alt_rounded,
               label: 'Fullført',
               value: '$completed',
+              onTap: onCompletedTap,
             ),
           ),
           Container(
@@ -431,6 +571,7 @@ class ProfileScreen extends StatelessWidget {
               icon: Icons.autorenew_rounded,
               label: 'Aktive',
               value: '$active',
+              onTap: onActiveTap,
             ),
           ),
         ],
@@ -442,8 +583,9 @@ class ProfileScreen extends StatelessWidget {
     required IconData icon,
     required String label,
     required String value,
+    VoidCallback? onTap,
   }) {
-    return Row(
+    final inner = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(icon, color: Colors.white.withOpacity(0.95), size: 16),
@@ -465,6 +607,12 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+    if (onTap == null) return inner;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: inner,
     );
   }
 
@@ -1047,6 +1195,337 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ---------- IDENTITET & VERIFISERING ----------
+  // Viser kun det som er reelt bekreftet på kontoen i dag. BankID er
+  // tydelig markert som «Kommer» — ingen falsk verifisering eller flyt.
+  Widget _identitySection(BuildContext context, UserProfile user) {
+    return _section(
+      title: 'Identitet & verifisering',
+      subtitle: 'Hva som er bekreftet på kontoen din i dag.',
+      child: Column(
+        children: [
+          _identityRow(
+            icon: Icons.mark_email_read_outlined,
+            label: 'E-post bekreftet',
+            value: user.isVerified ? 'Ja' : 'Nei',
+            valueColor: user.isVerified ? _safeGreen : _muted,
+          ),
+          const SizedBox(height: 10),
+          Divider(height: 1, color: _muted.withValues(alpha: 0.10)),
+          const SizedBox(height: 10),
+          _identityRow(
+            icon: Icons.fingerprint_rounded,
+            label: 'BankID-verifisering',
+            value: 'Kommer',
+            valueColor: _warn,
+            onTap: () => _showBankIdInfo(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _identityRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color valueColor,
+    VoidCallback? onTap,
+  }) {
+    final row = Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Icon(icon, color: _primary, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: _text,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: valueColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        if (onTap != null) ...[
+          const SizedBox(width: 6),
+          Icon(
+            Icons.info_outline_rounded,
+            color: _muted.withValues(alpha: 0.80),
+            size: 16,
+          ),
+        ],
+      ],
+    );
+    if (onTap == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: row,
+    );
+  }
+
+  void _showBankIdInfo(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: _muted.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _warn.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: const Icon(
+                      Icons.fingerprint_rounded,
+                      color: _warn,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'BankID-verifisering',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        color: _textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'BankID-verifisering er ikke aktivert ennå. Når den blir '
+                'tilgjengelig, kan du bekrefte identiteten din via BankID '
+                '— i tillegg til e-post-bekreftelse. Vi sier ifra her i '
+                'appen når funksjonen er klar.',
+                style: TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w500,
+                  height: 1.4,
+                  fontSize: 13.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'I dag betyr «Verifisert» kun at e-posten din er bekreftet.',
+                style: TextStyle(
+                  color: _muted,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- HJELP & INFO ----------
+  Widget _helpInfoSection(BuildContext context) {
+    return _section(
+      title: 'Hjelp & info',
+      child: Column(
+        children: [
+          _helpRow(
+            icon: Icons.help_outline_rounded,
+            label: 'Ofte stilte spørsmål',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FaqScreen()),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Divider(height: 1, color: _muted.withValues(alpha: 0.10)),
+          const SizedBox(height: 10),
+          _helpRow(
+            icon: Icons.mail_outline_rounded,
+            label: 'Kontakt oss',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ContactScreen()),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Divider(height: 1, color: _muted.withValues(alpha: 0.10)),
+          const SizedBox(height: 10),
+          _helpRow(
+            icon: Icons.privacy_tip_outlined,
+            label: 'Personvern og ansvar',
+            onTap: () => _showPrivacyResponsibility(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _helpRow({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, color: _primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: _text,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: _muted.withValues(alpha: 0.80),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrivacyResponsibility(BuildContext context) {
+    const points = [
+      'SmartHjelp er en plattform som kobler oppdragsgivere og utførere.',
+      'Vi rapporterer ikke inntekt, utgifter eller skatt på dine vegne.',
+      'Du er selv ansvarlig for skattemelding og rapportering. '
+          'Sjekk Skatteetaten ved tvil.',
+      'SmartHjelp gir ikke skatte-, juridisk eller regnskapsmessig '
+          'rådgivning.',
+      'For spørsmål om dine data, kontakt support via «Kontakt oss».',
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: _muted.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const Text(
+                'Personvern og ansvar',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: _textDark,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final t in points)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 7),
+                        child: Icon(Icons.circle, size: 5, color: _muted),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          t,
+                          style: const TextStyle(
+                            color: _text,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
