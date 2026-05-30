@@ -131,6 +131,24 @@ class TaxReportEntry {
   final String category;
   final String locationName;
   final double amount;
+  // Tilleggsfelter for skatterapport (additivt — endrer ingen betalings-
+  // logikk; gjenbruker Job.price/fee/payout/totalPrice):
+  //  * grossAmount = oppdragspris (det utfører får / "til oppdragstaker").
+  //  * platformFee = plattformavgift (10 %, inkl. mva). 0 for inntekt fordi
+  //    utfører ikke betaler avgiften; den legges på toppen for oppdragsgiver.
+  //    Sum av platformFee i en rapport = total avgift betalt av oppdragsgiver
+  //    i perioden.
+  final double grossAmount;
+  final double platformFee;
+  // Motpart for raden (additivt — ingen logikk-/skjema-endring):
+  //  * counterpartyUserId = oppdragsgivers id for inntekt, utførers id for
+  //    kostnad. Brukes til gruppering i rapporten (f.eks. 6 000 kr-kontroll).
+  //  * counterpartyName   = lokalt cachet navn (kan være tomt før profilen
+  //    er hentet). Eksporten faller tilbake til "Oppdragsgiver (ukjent
+  //    navn)" / "Oppdragstaker (ukjent navn)" når navn mangler — vi finner
+  //    aldri på navn.
+  final String counterpartyUserId;
+  final String counterpartyName;
   final String sourceJobId;
 
   const TaxReportEntry({
@@ -141,6 +159,10 @@ class TaxReportEntry {
     required this.category,
     required this.locationName,
     required this.amount,
+    this.grossAmount = 0,
+    this.platformFee = 0,
+    this.counterpartyUserId = '',
+    this.counterpartyName = '',
     required this.sourceJobId,
   });
 
@@ -836,6 +858,12 @@ class AppState extends ChangeNotifier {
         category: job.category,
         locationName: job.locationName,
         amount: job.payout,
+        // Utfører får hele oppdragsprisen; avgiften belastes oppdragsgiver.
+        grossAmount: job.payout,
+        platformFee: 0,
+        // Motpart for inntekt = oppdragsgiver (kunde).
+        counterpartyUserId: job.createdByUserId,
+        counterpartyName: getUserById(job.createdByUserId)?.firstName ?? '',
         sourceJobId: job.id,
       ));
     }
@@ -850,6 +878,14 @@ class AppState extends ChangeNotifier {
         category: job.category,
         locationName: job.locationName,
         amount: job.totalPrice,
+        // Oppdragspris (til oppdragstaker) + plattformavgift = totalPrice.
+        grossAmount: job.price.toDouble(),
+        platformFee: job.fee,
+        // Motpart for kostnad = utfører (akseptert bruker). Null-trygg.
+        counterpartyUserId: job.acceptedByUserId ?? '',
+        counterpartyName: (job.acceptedByUserId == null)
+            ? ''
+            : (getUserById(job.acceptedByUserId!)?.firstName ?? ''),
         sourceJobId: job.id,
       ));
     }
