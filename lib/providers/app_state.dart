@@ -724,14 +724,30 @@ class AppState extends ChangeNotifier {
   /// så hvis worker lukket appen før timeren rant ut, ble jobben låst
   /// til noen åpnet detalj-skjermen. Nå rydder vi opp ved hver fetch.
   /// Ikke awaited — fire-and-forget med interne RLS-checks for safety.
+  ///
+  /// VIKTIG: Gated til oppdragsgiver-siden inntil RLS på jobs er splittet
+  /// (egen migrasjon kommer). Worker-siden får 0 rader returnert når
+  /// expireReservation prøver å nulle ut accepted_by_user_id — RLS
+  /// WITH CHECK avviser raden fordi NEW-raden ikke lenger refererer til
+  /// auth.uid(). Det førte tidligere til en runaway-loop hvor hvert
+  /// "0 rader returnert" fallback-trigget reloadJobs(), som trigget
+  /// _sweepExpiredReservations på nytt (eksponentiell fan-out, ~hundrevis
+  /// av identiske logglinjer for samme 4 job-IDs på Android).
+  ///
+  /// Oppdragsgiver-siden er trygg fordi created_by_user_id = auth.uid()
+  /// fortsatt holder etter UPDATE. Worker-side cleanup tas av owner ved
+  /// neste fetch, eller av en server-side trigger når RLS-migrasjonen
+  /// lander.
   void _sweepExpiredReservations() {
     if (!_isAuthenticated) return;
+    if (_currentUser.id.isEmpty) return;
     final now = DateTime.now();
     final ids = _jobs
         .where((j) =>
             j.status == JobStatus.reserved &&
             j.reservedUntil != null &&
-            j.reservedUntil!.isBefore(now))
+            j.reservedUntil!.isBefore(now) &&
+            j.createdByUserId == _currentUser.id)
         .map((j) => j.id)
         .toList(growable: false);
     for (final id in ids) {
@@ -1229,6 +1245,10 @@ class AppState extends ChangeNotifier {
     final ok = await _saveJobUpdate(
       updated,
       systemMessage: 'Reservasjonen utløp automatisk.',
+      // Sweep-stien har allerede ferske jobs fra reloaden som trigget
+      // den; vi vil ikke at en fallback skal trigge nok en reload som
+      // trigger sweep igjen.
+      suppressReloadOnMissingRow: true,
     );
     if (!ok) return;
 
@@ -1742,6 +1762,13 @@ class AppState extends ChangeNotifier {
     String? notifyUserId,
     AppNotificationType? notificationType,
     String? notificationText,
+    // Når true: hopp over reloadJobs() i 0-rader-fallbacken. Brukes fra
+    // _sweepExpiredReservations/expireReservation-stien for å unngå
+    // recursion (reloadJobs trigger sweep, sweep trigger _saveJobUpdate,
+    // som ved 0 rader trigger reloadJobs igjen). Sweep har allerede ferske
+    // data fra reloaden som trigget den, så en ekstra reload her gir kun
+    // støy og potensielt eksponentiell fan-out.
+    bool suppressReloadOnMissingRow = false,
   }) async {
     Job? saved;
     try {
@@ -1752,7 +1779,9 @@ class AppState extends ChangeNotifier {
     }
 
     if (saved == null) {
-      await reloadJobs();
+      if (!suppressReloadOnMissingRow) {
+        await reloadJobs();
+      }
       return false;
     }
 
