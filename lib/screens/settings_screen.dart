@@ -245,14 +245,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _card({required List<Widget> children}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    // Bruker Material i stedet for Container(decoration: BoxDecoration(...))
+    // slik at ListTile-baserte barn (f.eks. SwitchListTile.adaptive i Varsler-
+    // kortet) har en gyldig Material-forfar å tegne bakgrunn og ink-ripple på.
+    // Tidligere malte ListTile-internalene sin Material på Scaffold-laget, men
+    // den hvite DecoratedBox-bakgrunnen her dekket dem — det utløste Flutter-
+    // assertet "ListTile background color or ink splashes may be invisible".
+    // Visuelt identisk: samme hvit fyll, samme 20-radius hjørner, samme border.
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _textMuted.withOpacity(0.12)),
+        side: BorderSide(color: _textMuted.withValues(alpha: 0.12)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(children: children),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(children: children),
+      ),
     );
   }
 
