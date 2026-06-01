@@ -56,7 +56,11 @@ class _AppShellState extends State<AppShell> {
         onNavigateToJobsTab: _onNavigateToJobsTab,
       ),
       JobsScreen(key: _jobsKey, initialTab: _pendingJobsTab),
-      const PostJobScreen(),
+      // Etter publisering tar PostJobScreen brukeren til Oppdrag → Mine
+      // via samme handler som HomeScreen-banneret bruker. Edit-modus
+      // (push-rute fra JobsScreen) instansierer skjermen uten denne
+      // callbacken, så den eksisterende Navigator.pop-flyten er bevart.
+      PostJobScreen(onPublished: _onNavigateToJobsTab),
       const ChatListScreen(),
       const ProfileScreen(),
     ];

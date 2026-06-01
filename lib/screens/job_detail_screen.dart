@@ -771,12 +771,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Differensiert trust-rad — erstatter den gamle enkelt-
-                  // pillen "Verifisert" som gjaldt e-post alene.
-                  TrustBadges(
-                    user: other,
-                    completedJobCount: completedCount,
-                  ),
+                  // Rolig identitets-rad for motpart: E-post/Profil-pill
+                  // når de gjelder, pluss alltid "BankID kommer". Ingen
+                  // "Pålitelig bruker"-claim før BankID er reelt aktivt.
+                  TrustBadges(user: other),
                 ],
               ),
             ),

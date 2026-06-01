@@ -299,15 +299,13 @@ class ProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        // Sprint 5: differensiert trust i stedet for én
-                        // upresis "Verifisert"-pille. Beholder _verifiedPill
-                        // som privat helper i fila for bakoverkompatibilitet,
-                        // men bruker den ikke fra UI-en lenger.
+                        // Roligere identitets-rad: E-post/Profil-pill når
+                        // de gjelder, pluss alltid "BankID kommer" som
+                        // dempet markør. Ingen falsk "Verifisert" eller
+                        // "Pålitelig bruker"-claim.
                         TrustBadges(
                           user: user,
-                          completedJobCount: completedCount,
                           onDarkBackground: true,
-                          showNewUserPill: false,
                         ),
                       ],
                     ),
@@ -758,13 +756,10 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          // Sprint 5: differensiert trust-rad. Wrap så pill-ene flyter til
-          // neste linje på smale skjermer. "Pålitelig bruker"-pille dukker
-          // opp som ekstra grønn pille når alle tre kriterier er oppfylt.
-          TrustBadges(
-            user: user,
-            completedJobCount: completedCount,
-          ),
+          // Roligere identitets-rad: E-post/Profil-pill + alltid
+          // "BankID kommer". Fullført-antall er allerede dekket av
+          // statistikk-flisene over og hører ikke hjemme her.
+          TrustBadges(user: user),
         ],
       ),
     );

@@ -8,6 +8,7 @@ import '../data/dummy_data.dart';
 import '../models/job.dart';
 import '../providers/app_state.dart';
 import '../services/supabase_service.dart';
+import 'jobs_screen.dart' show JobsTab;
 
 // Lokale design-tokens — speiler resten av appen (samme palett som
 // HomeScreen/JobDetailScreen). Holdes lokalt her; ingen global token-
@@ -21,7 +22,20 @@ const Color _kSafeGreen = Color(0xFF0EA877);
 
 class PostJobScreen extends StatefulWidget {
   final Job? existingJob;
-  const PostJobScreen({super.key, this.existingJob});
+
+  /// Valgfri callback som fyres etter at brukeren har publisert et NYTT
+  /// oppdrag (ikke ved redigering) og lukket bekreftelses-arket. AppShell
+  /// kobler dette til _onNavigateToJobsTab slik at brukeren lander på
+  /// Oppdrag → Mine i stedet for å bli stående på Publiser-fanen.
+  /// Hvis null (eller redigeringsmodus), gjøres ingenting — bevarer den
+  /// eksisterende Navigator.pop()-flyten for push-rute-redigering.
+  final void Function(JobsTab tab)? onPublished;
+
+  const PostJobScreen({
+    super.key,
+    this.existingJob,
+    this.onPublished,
+  });
 
   @override
   State<PostJobScreen> createState() => _PostJobScreenState();
@@ -585,6 +599,14 @@ class _PostJobScreenState extends State<PostJobScreen> {
           _title.clear(); _desc.clear(); _price.clear(); _postcode.clear();
           setState(() { images = []; category = null; currentIndex = 0; });
           await _showPublishedSheet();
+          // Etter publisering + "Forstått": send brukeren videre til
+          // Oppdrag → Mine. Kun for nye oppdrag — redigerings-flyten
+          // (push-rute fra JobsScreen) lar Navigator.pop håndtere retur.
+          // mounted-sjekk fordi sheet er en await — brukeren kan ha
+          // navigert vekk mens den var åpen.
+          if (mounted && !_isEditing) {
+            widget.onPublished?.call(JobsTab.mine);
+          }
         }
       }
     } catch (e) {
