@@ -1827,12 +1827,22 @@ class AppState extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _mergeMessage(msg);
-    _supabaseService.insertMessage(msg).then((saved) {
-      _mergeMessage(saved);
-      notifyListeners();
-    }).catchError((e) {
-      debugPrint('system message insert error: $e');
-    });
+    // V1: system-meldinger holdes lokalt. chat_messages RLS WITH CHECK
+    // krever sender_id = auth.uid(); 'system' matcher hverken auth.uid()
+    // eller en gyldig UUID, så et insert-forsøk ville alltid feilet med
+    // 42501 ("new row violates row-level security policy") og produsert
+    // misvisende error-loggspam. Vi sparer round-trip og holder
+    // system-noten lokalt på enheten som produserte den.
+    //
+    // Trade-off: motparten ser ikke "Reservasjonen utløp automatisk" o.l.
+    // i sin chat-historie før vi (senere) åpner RLS for system-meldinger
+    // og fjerner denne short-circuiten. Eksisterende push-notifications
+    // (_pushNotification) er uavhengige og leverer beskjed til motpart
+    // som før.
+    //
+    // Callerne (_saveJobUpdate, reserveJob, expireReservation, …)
+    // kaller notifyListeners() etter denne metoden, så vi gjør ikke det
+    // her — _mergeMessage alene oppdaterer ikke UI.
   }
 
   void _mergeMessage(ChatMessage msg) {
