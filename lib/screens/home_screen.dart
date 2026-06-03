@@ -131,57 +131,83 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Column(
+        // Stack lar Expanded(map/list) alltid få full restplass i Column,
+        // mens preview-kortet og "tar oppdraget"-spinneren legger seg som
+        // bunn-overlay. Tidligere var preview-kortet en ekstra non-flex
+        // child i Column, og når både alle headere og kortet skulle få
+        // sin naturlige høyde (særlig i landscape / lave skjermer) ble
+        // Expanded klemt under 0 og Column rapporterte overflow.
+        child: Stack(
           children: [
-            _header(context, jobs, appState.hasUnreadNotifications),
-            const SizedBox(height: 12),
-            // Sprint 6: søkefelt + filter-knapp ligger rett under
-            // headeren. Filter-knappen åpner bottomsheet, søkefeltet
-            // oppdaterer _filter.query umiddelbart.
-            JobSearchBar(
-              query: _filter.query,
-              filterActive: _filter.isActive,
-              activeFilterCount: _activeFilterCount(),
-              onQueryChanged: _onSearchChanged,
-              onFilterTap: _openFilterSheet,
-            ),
-            // Sprint 6: aktive-filter-chips. Returnerer SizedBox.shrink()
-            // når filter er passive, så ingen vertikal støy.
-            ActiveFilterChips(
-              filter: _filter,
-              onChange: _onFilterChanged,
-              onClearAll: _clearFilters,
-            ),
-            // Sprint 7A: ærlig feilbanner når Supabase-fetch feilet.
-            // Tidligere viste vi bare "Ingen oppdrag" og brukeren trodde
-            // plattformen var tom. Nå tilbyr vi "Prøv igjen" eksplisitt.
-            if (appState.jobsError != null)
-              _jobsErrorBanner(appState.jobsError!),
-            if (activeJobs.isNotEmpty)
-              _activeJobsBanner(activeJobs.length, bannerTargetTab),
-            const SizedBox(height: 8),
-            _segmentedToggle(),
-            const SizedBox(height: 12),
-            _categoryChipsRow(),
-            const SizedBox(height: 12),
-
-            Expanded(
-              child: _showMap ? _mapView(jobs) : _listView(jobs),
-            ),
-
-            if (_selectedJob != null)
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: _previewCard(_selectedJob!),
+            Column(
+              children: [
+                _header(context, jobs, appState.hasUnreadNotifications),
+                const SizedBox(height: 12),
+                // Sprint 6: søkefelt + filter-knapp ligger rett under
+                // headeren. Filter-knappen åpner bottomsheet, søkefeltet
+                // oppdaterer _filter.query umiddelbart.
+                JobSearchBar(
+                  query: _filter.query,
+                  filterActive: _filter.isActive,
+                  activeFilterCount: _activeFilterCount(),
+                  onQueryChanged: _onSearchChanged,
+                  onFilterTap: _openFilterSheet,
                 ),
-              ),
+                // Sprint 6: aktive-filter-chips. Returnerer SizedBox.shrink()
+                // når filter er passive, så ingen vertikal støy.
+                ActiveFilterChips(
+                  filter: _filter,
+                  onChange: _onFilterChanged,
+                  onClearAll: _clearFilters,
+                ),
+                // Sprint 7A: ærlig feilbanner når Supabase-fetch feilet.
+                // Tidligere viste vi bare "Ingen oppdrag" og brukeren trodde
+                // plattformen var tom. Nå tilbyr vi "Prøv igjen" eksplisitt.
+                if (appState.jobsError != null)
+                  _jobsErrorBanner(appState.jobsError!),
+                if (activeJobs.isNotEmpty)
+                  _activeJobsBanner(activeJobs.length, bannerTargetTab),
+                const SizedBox(height: 8),
+                _segmentedToggle(),
+                const SizedBox(height: 12),
+                _categoryChipsRow(),
+                const SizedBox(height: 12),
 
-            if (_isTakingJob)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 20),
-                child: CircularProgressIndicator(),
+                Expanded(
+                  child: _showMap ? _mapView(jobs) : _listView(jobs),
+                ),
+              ],
+            ),
+
+            // Bunn-overlay: preview-kort + (valgfri) spinner. Samme
+            // padding/SafeArea som før — visuell posisjon uendret når
+            // Column-høyden er romslig. Forskjellen er at kortet nå
+            // _legger seg over_ map/list i stedet for å presse Expanded
+            // mindre, så vi unngår RenderFlex-overflow på smale høyder
+            // og i landscape.
+            if (_selectedJob != null || _isTakingJob)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_selectedJob != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          child: _previewCard(_selectedJob!),
+                        ),
+                      if (_isTakingJob)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 20),
+                          child: CircularProgressIndicator(),
+                        ),
+                    ],
+                  ),
+                ),
               ),
           ],
         ),
