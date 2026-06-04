@@ -53,7 +53,6 @@ class _PostJobScreenState extends State<PostJobScreen> {
   List<XFile> images = [];
   int currentIndex = 0;
   bool _isSubmitting = false;
-  String? _editKommune;
 
   // Reservasjonsvindu valgt av oppdragsgiver. MVP: 30 (vanlig, default)
   // eller 10 (haste). Styrer kun hvor lenge oppdraget er låst etter at
@@ -71,7 +70,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
       _desc.text = job.description;
       _price.text = job.price.toString();
       category = job.category;
-      _editKommune = kLocations.contains(job.locationName) ? job.locationName : kLocations.first;
+      // Forhåndsutfyll postnummer hvis jobben har det. Eldre rader uten
+      // postal_code starter tomt; submit godtar tomt i edit-modus og
+      // bevarer da eksisterende locationName.
+      _postcode.text = job.postalCode ?? '';
       _reservationMinutes = job.reservationMinutes == 10 ? 10 : 30;
     }
   }
@@ -151,10 +153,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
               icon: Icons.place_outlined,
               title: 'Sted',
             ),
-            if (_isEditing)
-              _dropdown(kLocations, _editKommune, 'Kommune', (v) => setState(() => _editKommune = v))
-            else
-              _postcodeField(),
+            // Postnummer-felt vises også i edit-modus, slik at oppdragsgiver
+            // kan endre postnummer (og derved kommune) på en åpen jobb.
+            // Validator nedenfor tillater tomt felt i edit (eldre rader uten
+            // postal_code) — submit bevarer da eksisterende locationName.
+            _postcodeField(),
             const SizedBox(height: 22),
             _sectionHeader(
               icon: Icons.timelapse_rounded,
@@ -468,8 +471,24 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
     final String kommune;
     if (_isEditing) {
-      if (_editKommune == null) return;
-      kommune = _editKommune!;
+      // Edit-modus: hvis bruker har lagt inn et postnummer, derive kommune
+      // som ved opprettelse. Hvis feltet er tomt (eldre rader uten
+      // postal_code som redigeres for andre felter) → bevar eksisterende
+      // locationName uendret. Validator over har allerede avvist ikke-tomme
+      // ugyldige postnumre.
+      final raw = _postcode.text.trim();
+      if (raw.isEmpty) {
+        kommune = widget.existingJob!.locationName;
+      } else {
+        final derived = _kommuneForPostcode(raw);
+        if (derived == null) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Postnummeret er ikke i SmartHjelp sitt dekningsområde (Skien, Porsgrunn, Siljan, Bamble).'),
+          ));
+          return;
+        }
+        kommune = derived;
+      }
     } else {
       final derived = _derivedKommune;
       if (derived == null) {
@@ -499,6 +518,10 @@ class _PostJobScreenState extends State<PostJobScreen> {
           price: parsedPrice,
           category: category!,
           locationName: kommune,
+          // Et nytt ikke-tomt postnummer overskriver. Tomt felt → caller
+          // utelater verdien, og AppState.updateOwnJob bevarer eksisterende
+          // postalCode (via _sentinel-default på Job.copyWith).
+          postalCode: _postcode.text.trim(),
           lat: _latForLocation(kommune),
           lng: _lngForLocation(kommune),
           reservationMinutes: _reservationMinutes,
@@ -866,8 +889,16 @@ class _PostJobScreenState extends State<PostJobScreen> {
             maxLength: 4,
             onChanged: (_) => setState(() {}),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Postnummer må fylles ut';
-              if (_kommuneForPostcode(v) == null) return 'Postnummeret er utenfor dekningsområdet';
+              final raw = (v ?? '').trim();
+              if (raw.isEmpty) {
+                // Tomt felt godtas i edit-modus (eldre rader uten
+                // postal_code) — submit bevarer da eksisterende
+                // locationName. Ved opprettelse er postnummer påkrevd.
+                return _isEditing ? null : 'Postnummer må fylles ut';
+              }
+              if (_kommuneForPostcode(raw) == null) {
+                return 'Postnummeret er utenfor dekningsområdet';
+              }
               return null;
             },
             decoration: const InputDecoration(
