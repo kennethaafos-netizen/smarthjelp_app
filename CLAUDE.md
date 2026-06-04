@@ -274,3 +274,9 @@ After code changes, run or instruct the user to run:
 - Do not silence errors without understanding the cause.
 - Do not introduce breaking changes to models, AppState methods, routes, Supabase schema assumptions, or UI flows without approval.
 If uncertain, inspect more files first. Ask before editing only when ambiguity could cause architectural damage, data loss, security risk, or broken user flows.
+
+## Supabase migration rules
+
+When creating new tables in the public schema, migrations must include explicit GRANT statements for anon, authenticated, and service_role where appropriate, plus RLS policies. Do not assume public tables are automatically exposed through Supabase Data API/PostgREST/GraphQL.
+
+Adding a new column to an existing table does not require new GRANT statements by itself, but table-level permissions and RLS must still be respected.
