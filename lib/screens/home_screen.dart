@@ -534,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           JobCard(
             job: job,
-            distanceText: job.locationName,
+            distanceText: job.displayLocation,
             onTap: () => _openJob(job),
             onTake: job.status == JobStatus.open
                 ? () => _takeAndOpen(job)
@@ -646,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(bottom: 12),
               child: JobCard(
                 job: job,
-                distanceText: job.locationName,
+                distanceText: job.displayLocation,
                 onTap: () => _openJob(job),
                 onTake: job.status == JobStatus.open
                     ? () => _takeAndOpen(job)

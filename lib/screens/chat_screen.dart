@@ -373,7 +373,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    job.locationName,
+                    // displayLocation = "<postnr> <kommune>" når postnr
+                    // finnes; ellers bare kommune. Eldre rader uendret.
+                    job.displayLocation,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _textMuted),

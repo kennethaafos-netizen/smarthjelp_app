@@ -11,6 +11,11 @@ class Job {
   final String description;
   final int price;
   final String locationName;
+  // Persistert postnummer (4 sifre) hvis oppdragsgiver oppga det ved
+  // publisering. Null/tomt = ukjent (eldre rader før migrasjon, eller
+  // jobber lagt ut uten gyldig postnummer). UI bruker `displayLocation`
+  // som faller tilbake til kun kommune-navn når dette mangler.
+  final String? postalCode;
   final double lat;
   final double lng;
   final double? exactLat;
@@ -47,6 +52,7 @@ class Job {
     required this.createdByUserId,
     required this.status,
     required this.createdAt,
+    this.postalCode,
     this.exactLat,
     this.exactLng,
     this.imageUrl,
@@ -93,12 +99,23 @@ class Job {
   double get visibleLatForReservedWorker => exactLat ?? lat;
   double get visibleLngForReservedWorker => exactLng ?? lng;
 
+  /// Visningsklar lokasjon for jobbkort/detalj/chat-header.
+  /// Returnerer `<postnummer> <kommune>` når begge finnes, ellers kun
+  /// kommune-navnet. Tomme/whitespace-postnumre regnes som ukjent slik
+  /// at vi aldri viser en stygg ledende "  Skien".
+  String get displayLocation {
+    final p = postalCode?.trim() ?? '';
+    if (p.isEmpty) return locationName;
+    return '$p $locationName';
+  }
+
   Job copyWith({
     String? id,
     String? title,
     String? description,
     int? price,
     String? locationName,
+    Object? postalCode = _sentinel,
     double? lat,
     double? lng,
     Object? exactLat = _sentinel,
@@ -125,6 +142,9 @@ class Job {
       description: description ?? this.description,
       price: price ?? this.price,
       locationName: locationName ?? this.locationName,
+      postalCode: postalCode == _sentinel
+          ? this.postalCode
+          : postalCode as String?,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       exactLat:
@@ -164,6 +184,7 @@ class Job {
       description: _toStringValue(map['description']),
       price: _toInt(map['price']),
       locationName: _toStringValue(map['location_name']),
+      postalCode: _toNullableString(map['postal_code']),
       lat: _toDouble(map['lat']),
       lng: _toDouble(map['lng']),
       exactLat: _toNullableDouble(map['exact_lat']),
@@ -198,6 +219,7 @@ class Job {
       'description': description,
       'price': price,
       'location_name': locationName,
+      'postal_code': postalCode,
       'lat': lat,
       'lng': lng,
       'exact_lat': exactLat,
@@ -226,6 +248,7 @@ class Job {
       'description': description,
       'price': price,
       'location_name': locationName,
+      'postal_code': postalCode,
       'lat': lat,
       'lng': lng,
       'exact_lat': exactLat,

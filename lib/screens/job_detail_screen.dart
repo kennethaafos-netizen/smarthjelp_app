@@ -403,7 +403,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  job.locationName,
+                  // displayLocation: "<postnr> <kommune>" når postnummer
+                  // er satt på jobben, ellers kun kommune-navnet.
+                  // Eldre rader uten postal_code viser akkurat som før.
+                  job.displayLocation,
                   style: const TextStyle(
                     color: _textMuted,
                     fontWeight: FontWeight.w600,

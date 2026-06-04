@@ -335,7 +335,10 @@ class _JobCardState extends State<JobCard> {
                     color: _textPrimary, size: 13),
                 const SizedBox(width: 4),
                 Text(
-                  job.locationName,
+                  // displayLocation = "<postnr> <kommune>" når postnummer
+                  // finnes, ellers kun kommune. Backwards-compat for
+                  // eldre jobber (postal_code null) — viser akkurat som før.
+                  job.displayLocation,
                   style: const TextStyle(
                     color: _textPrimary,
                     fontWeight: FontWeight.w700,

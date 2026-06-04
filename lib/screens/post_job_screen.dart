@@ -576,6 +576,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
           description: _desc.text.trim(),
           price: parsedPrice,
           locationName: kommune,
+          // Postnummeret er allerede validert til 4 siffer og innenfor
+          // dekningsområdet via _derivedKommune ovenfor; vi sender det
+          // videre slik at UI senere kan vise "3724 Skien" i stedet for
+          // bare kommune-navnet. AppState normaliserer tomt → null.
+          postalCode: _postcode.text.trim(),
           lat: _latForLocation(kommune),
           lng: _lngForLocation(kommune),
           category: category!,

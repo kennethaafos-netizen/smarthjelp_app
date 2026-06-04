@@ -934,12 +934,19 @@ class AppState extends ChangeNotifier {
     String? imageUrl,
     List<String>? imageUrls,
     int reservationMinutes = 30,
+    String? postalCode,
   }) async {
     if (!_isAuthenticated || _currentUser.id.isEmpty) return false;
 
     // MVP: kun 10 (haste) eller 30 (vanlig). Klemmes defensivt så DB-
     // CHECK-constrainten aldri brytes uansett kallsted.
     final safeReservationMinutes = reservationMinutes == 10 ? 10 : 30;
+
+    // Normaliser postnummer: trim, og behandl tomt som null så vi ikke
+    // skriver "" til en kolonne som ellers er NULL for eldre rader.
+    final trimmedPostal = postalCode?.trim();
+    final normalizedPostal =
+        (trimmedPostal == null || trimmedPostal.isEmpty) ? null : trimmedPostal;
 
     final draft = Job(
       id: _uuid.v4(),
@@ -948,6 +955,7 @@ class AppState extends ChangeNotifier {
       price: price,
       category: category,
       locationName: locationName,
+      postalCode: normalizedPostal,
       lat: lat,
       lng: lng,
       imageUrl: imageUrl,
@@ -997,6 +1005,7 @@ class AppState extends ChangeNotifier {
     required double lat,
     required double lng,
     int reservationMinutes = 30,
+    String? postalCode,
   }) async {
     final job = getJobById(jobId);
     if (job == null) return false;
@@ -1006,7 +1015,16 @@ class AppState extends ChangeNotifier {
     // MVP: kun 10 (haste) eller 30 (vanlig).
     final safeReservationMinutes = reservationMinutes == 10 ? 10 : 30;
 
-    final updated = job.copyWith(
+    // Postnummer er kun synlig i create-skjemaet i v1; edit-skjemaet
+    // viser ikke feltet (kun kommune-dropdown). Caller fra edit kaller
+    // derfor uten `postalCode` og vi bevarer eksisterende verdi ved å
+    // la copyWith sin _sentinel-default ta over. Hvis caller likevel
+    // sender en ny ikke-tom verdi (fremtidig UI) blir den lagret.
+    final trimmedPostal = postalCode?.trim();
+    final hasNewPostal =
+        trimmedPostal != null && trimmedPostal.isNotEmpty;
+
+    final base = job.copyWith(
       title: title,
       description: description,
       price: price,
@@ -1016,6 +1034,9 @@ class AppState extends ChangeNotifier {
       lng: lng,
       reservationMinutes: safeReservationMinutes,
     );
+    final updated = hasNewPostal
+        ? base.copyWith(postalCode: trimmedPostal)
+        : base;
 
     try {
       final saved = await _supabaseService.updateJob(updated);
@@ -2211,7 +2232,7 @@ class AppState extends ChangeNotifier {
 
   String jobLocationLabel(Job job) {
     final d = formatDistance(jobDistance(job));
-    return '$d • ${job.locationName}';
+    return '$d • ${job.displayLocation}';
   }
 
   double jobMarkerLat(Job job) {

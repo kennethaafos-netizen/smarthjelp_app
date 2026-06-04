@@ -580,7 +580,7 @@ class _JobsScreenState extends State<JobsScreen> {
             children: [
               JobCard(
                 job: job,
-                distanceText: job.locationName,
+                distanceText: job.displayLocation,
                 onTap: () => _openJob(context, job),
                 onTake: (isAllTab &&
                         job.status == JobStatus.open &&
